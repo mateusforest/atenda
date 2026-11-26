@@ -1,0 +1,8 @@
+{
+  "name": "atenda-portal",
+  "private": true,
+  "dependencies": {
+    "@vercel/blob": "2.9.0",
+    "ipaddr.js": "2.2.0"
+  }
+}

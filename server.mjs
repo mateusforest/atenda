@@ -33,15 +33,19 @@ async function state(create=false){
 }
 http.createServer(async(req,res)=>{
  res.setHeader('Cache-Control','no-store');res.setHeader('X-Frame-Options','DENY');res.setHeader('X-Content-Type-Options','nosniff');
- if(!timingSafeEqual(authorized,hash(req.headers.authorization||''))){res.writeHead(401,{'WWW-Authenticate':'Basic realm="Atenda", charset="UTF-8"'});return res.end()}
+ if(req.url.split('?')[0]!=='/api/workspace'&&!timingSafeEqual(authorized,hash(req.headers.authorization||''))){res.writeHead(401,{'WWW-Authenticate':'Basic realm="Atenda", charset="UTF-8"'});return res.end()}
  const json=(code,v)=>{res.writeHead(code,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(v))};
  try{
- const pages=new Map([['/','index.html'],['/index.html','index.html'],['/portal','portal.html'],['/portal/','portal.html'],['/portal.html','portal.html'],['/dot.png','dot.png'],['/dot-motion.js','dot-motion.js']]);
+ const pages=new Map([['/','index.html'],['/index.html','index.html'],['/portal','portal.html'],['/portal/','portal.html'],['/portal.html','portal.html'],['/empresa.js','empresa.js'],['/empresa.css','empresa.css'],['/dot.png','dot.png'],['/dot-motion.js','dot-motion.js']]);
  const asset=pages.get(req.url.split('?')[0]);
  if(asset&&req.method==='GET'){
   const content=await readFile(new URL('./dist/'+asset,import.meta.url));
-  const type=asset.endsWith('.png')?'image/png':asset.endsWith('.js')?'text/javascript; charset=utf-8':'text/html; charset=utf-8';
+  const type=asset.endsWith('.png')?'image/png':asset.endsWith('.css')?'text/css; charset=utf-8':asset.endsWith('.js')?'text/javascript; charset=utf-8':'text/html; charset=utf-8';
   res.writeHead(200,{'Content-Type':type});return res.end(content)
+ }
+ if(req.url.split('?')[0]==='/api/workspace'){
+   if(req.method==='POST'){const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>3000000)return json(413,{error:'Arquivo muito grande.'});chunks.push(chunk)}try{req.body=JSON.parse(Buffer.concat(chunks).toString())}catch{return json(400,{error:'JSON inválido.'})}}
+   const {workspace}=await import('./lib/workspace.mjs');return await workspace(req,res)
  }
  if(req.url!=='/api/whatsapp'||!['GET','POST'].includes(req.method))return json(404,{});
  if(req.headers['x-atenda-panel']!=='1')return json(403,{});
