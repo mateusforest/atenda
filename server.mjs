@@ -36,7 +36,13 @@ http.createServer(async(req,res)=>{
  if(!timingSafeEqual(authorized,hash(req.headers.authorization||''))){res.writeHead(401,{'WWW-Authenticate':'Basic realm="Atenda", charset="UTF-8"'});return res.end()}
  const json=(code,v)=>{res.writeHead(code,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(v))};
  try{
- if(req.url==='/'&&req.method==='GET'){const page=await readFile(new URL('./dist/index.html',import.meta.url));res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});return res.end(page)}
+ const pages=new Map([['/','index.html'],['/index.html','index.html'],['/portal','portal.html'],['/portal/','portal.html'],['/portal.html','portal.html'],['/dot.png','dot.png'],['/dot-motion.js','dot-motion.js']]);
+ const asset=pages.get(req.url.split('?')[0]);
+ if(asset&&req.method==='GET'){
+  const content=await readFile(new URL('./dist/'+asset,import.meta.url));
+  const type=asset.endsWith('.png')?'image/png':asset.endsWith('.js')?'text/javascript; charset=utf-8':'text/html; charset=utf-8';
+  res.writeHead(200,{'Content-Type':type});return res.end(content)
+ }
  if(req.url!=='/api/whatsapp'||!['GET','POST'].includes(req.method))return json(404,{});
  if(req.headers['x-atenda-panel']!=='1')return json(403,{});
  if(!WA_AKG_URL||!WA_AKG_API_KEY||!session)return json(503,{error:'Configure a URL, a chave e a sessão do WA-AKG no servidor.'});
