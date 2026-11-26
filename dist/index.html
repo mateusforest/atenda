@@ -136,6 +136,14 @@ function editQuote(id){
  };
 }
 
+function replySetup(){
+ modal('Resposta automática no WhatsApp','<form id="liveReply" class="stack"><p>Escolha a palavra que inicia o atendimento em conversas privadas.</p><label class="field">Palavra exata<input name="keyword" required maxlength="80" placeholder="Ex.: orçamento"></label><label class="field">Resposta<textarea name="response" maxlength="2000"></textarea></label><div class="actions"><button class="btn light" value="read">Consultar</button><button class="btn" value="enable">Salvar e ativar</button><button class="btn light" value="disable">Desativar</button></div><output role="status"></output></form>');
+ const f=document.querySelector('#liveReply');const out=f.querySelector('output');
+ f.onsubmit=async e=>{e.preventDefault();const action=e.submitter.value;const keyword=f.elements.keyword.value.trim(),response=f.elements.response.value.trim();
+ if(action==='enable'&&!response){out.textContent='Preencha a resposta.';return}
+ for(const b of f.querySelectorAll('button'))b.disabled=true;
+ try{const res=await fetch('/api/whatsapp?operation=reply',{method:'POST',headers:{'Content-Type':'application/json','X-Atenda-Panel':'1'},body:JSON.stringify({action,keyword,response})});const d=await res.json();if(!res.ok)throw Error(d.error||'Falha no gateway.');if(action==='read')f.elements.response.value=d.response;out.textContent=d.enabled?'Resposta ativa no gateway.':'Nenhuma resposta ativa para essa palavra.'}catch(err){out.textContent=err.message}finally{for(const b of f.querySelectorAll('button'))b.disabled=false}}
+}
 function channel(){
  setTimeout(()=>checkChannel(false),0);
  return title('WhatsApp','Vincule o número da empresa à sessão WA-AKG.')+'<section class="card stack pane"><h2>Conexão do número</h2><div id="waState" role="status">Consultando sessão…</div><div id="waActions"></div></section>';
@@ -149,12 +157,13 @@ async function checkChannel(create){
  try{
  const r=await fetch('/api/whatsapp',{method:create?'POST':'GET',headers:{'X-Atenda-Panel':'1'},cache:'no-store',signal:AbortSignal.timeout(22000)});
  if(!(r.headers.get('content-type')||'').includes('application/json'))throw Error('O pareamento está disponível na versão com servidor.');
- const result=await r.json();if(!r.ok)throw Error(result.error||'Consulta indisponível.');
+ const result=await r.json();if(result.setup){if(!slot.isConnected||seq!==waSequence)return;slot.textContent=result.error;actions.innerHTML='<a class="btn light" target="_blank" rel="noopener" href="https://vercel.com/mateus-maraschin-forests-projects/atenda/settings/environment-variables">Configurar instância WA-AKG</a> '+action('Verificar conexão','checkChannel(false)');return}if(!r.ok)throw Error(result.error||'Consulta indisponível.');
  if(!slot.isConnected||seq!==waSequence)return;
  const messages={missing:'A sessão ainda não foi criada.',connected:'WhatsApp conectado.',waiting:'Aguardando QR Code do gateway.',pairing:'No celular, abra Aparelhos conectados e escaneie o QR Code.'};
  slot.textContent=messages[result.state]||'Estado desconhecido.';
  if(result.state==='pairing'){const img=document.createElement('img');img.src=result.qr;img.alt='QR Code de pareamento';img.width=240;slot.append(document.createElement('br'),img)}
  if(['pairing','waiting'].includes(result.state))setTimeout(()=>{if(slot.isConnected&&seq===waSequence)checkChannel(false)},5000);
+ if(result.state==='connected'){actions.innerHTML=action('Configurar resposta automática','replySetup()','');return}
  actions.innerHTML=result.state==='missing'?action('Gerar QR Code','checkChannel(true)',''):action('Atualizar','checkChannel(false)');
  }catch(e){if(slot.isConnected&&seq===waSequence){slot.textContent=e.message;actions.innerHTML=action('Tentar novamente','checkChannel(false)')}}
 }
