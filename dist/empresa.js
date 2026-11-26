@@ -3,11 +3,7 @@ const Empresa = (() => {
   const singular={leads:'lead',clients:'cliente',documents:'documento',tasks:'tarefa',payments:'pagamento'};
   const stages={leads:['Novo','Em contato','Qualificado','Perdido'],clients:['Ativo','Inativo'],documents:['Vigente','Em revisão','Arquivado'],tasks:['A fazer','Em andamento','Concluída'],payments:['Pendente','Pago','Cancelado']};
   const empty=()=>({profile:{},sections:[],records:[],connections:[]});
-  let state=empty(),rev='',email='',section='leads',settingsTab='Empresa',searchText='',authConfig,refreshing,loading=false,fault='';
-  let session=null;
-  try {session=JSON.parse(sessionStorage.getItem('atenda.conta'))} catch {}
-  function keep(s){session=s;s?sessionStorage.setItem('atenda.conta',JSON.stringify(s)):sessionStorage.removeItem('atenda.conta')}
-  function takeSession(s){keep({access_token:s.access_token,refresh_token:s.refresh_token,expires_at:s.expires_at||Math.floor(Date.now()/1000)+s.expires_in})}
+  let state=empty(),rev='',email='',section='leads',settingsTab='Empresa',searchText='',loading=false,fault='';
   const allSections=()=>({...baseSections,...Object.fromEntries(state.sections.map(s=>[s.id,s.name]))});
   const isPrivatePage=()=>['panel','settings','integrations'].includes(page);
   const btn=(label,op,id='',primary=false)=>'<button type="button" class="btn '+(primary?'':'light')+'" data-wop="'+esc(op)+'" data-wid="'+esc(id)+'">'+esc(label)+'</button>';
@@ -20,33 +16,19 @@ const Empresa = (() => {
   const moneyBR=value=>Number(value||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
   function progress(form,work){const status=form.querySelector('output');if(form.dataset.busy)return;form.dataset.busy='1';if(status)status.textContent='Aguarde…';
     return Promise.resolve().then(work).catch(e=>{if(status)status.textContent=e.message||'Não foi possível concluir.'}).finally(()=>{delete form.dataset.busy})}
-  async function config(){if(!authConfig){const r=await fetch('/api/workspace?action=config',{cache:'no-store'});if(!r.ok)throw Error('O serviço de conta está indisponível.');authConfig=await r.json()}return authConfig}
-  async function auth(path,method,body,token){
-    const c=await config();const r=await fetch(c.url+'/auth/v1/'+path,{method,headers:{apikey:c.key,'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:body?JSON.stringify(body):undefined});
-    const v=await r.json().catch(()=>({}));if(!r.ok){const errors={invalid_credentials:'E-mail ou senha incorretos.',email_not_confirmed:'Confirme o e-mail antes de entrar.',user_already_exists:'Já existe uma conta com este e-mail.',over_email_send_rate_limit:'Aguarde antes de solicitar outro e-mail.',weak_password:'Escolha uma senha mais forte.'};throw Error(errors[v.error_code]||v.msg||v.message||'O serviço de conta recusou a operação.')}return v;
-  }
-  async function access(){
-    if(!session)throw Error('Entre na sua conta.');
-    if(session.expires_at<Date.now()/1000+60){refreshing??=auth('token?grant_type=refresh_token','POST',{refresh_token:session.refresh_token}).then(takeSession).finally(()=>refreshing=null);await refreshing}
-    return session.access_token;
-  }
+  const auth=AtendaAuth.request,access=AtendaAuth.access,takeSession=AtendaAuth.save;
   async function api(action,value){
     const token=await access();
     const r=await fetch('/api/workspace',{method:action?'POST':'GET',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:action?JSON.stringify({action,value,rev}):undefined,cache:'no-store'});
-    const v=await r.json().catch(()=>({}));if(!session||session.access_token!==token)throw Error('A sessão mudou. Abra novamente a área da empresa.');if(!r.ok){if(r.status===401){keep(null);state=empty();email='';rev='';render()}throw Error(v.error||'Não foi possível acessar o painel.')}
+    const v=await r.json().catch(()=>({}));if(!AtendaAuth.session||AtendaAuth.session.access_token!==token)throw Error('A sessão mudou. Abra novamente a área da empresa.');if(!r.ok){if(r.status===401){AtendaAuth.clear();location.replace('/login')}throw Error(v.error||'Não foi possível acessar o painel.')}
     if(v.state){state=v.state;rev=v.rev;email=v.email;fault=''}return v;
   }
-  async function reload(){if(!session)return;loading=true;fault='';try{await api()}catch(e){fault=e.message}finally{loading=false;render()}}
-  function guest(){return '<section class="card ws-gate"><h2>'+ (loading?'Abrindo sua empresa…':fault?'Acesso ao painel':'Sua área privada')+'</h2><p>'+esc(loading?'Carregando os dados da conta.':fault||'Entre com o e-mail da empresa para acessar seus cadastros, arquivos e integrações.')+'</p>'+(loading?'':session?btn('Tentar novamente','reload')+' '+btn('Sair','logout'):btn('Entrar','login','',true)+' '+btn('Criar conta','signup'))+'</section>'}
-  function accountForm(signup){modal(signup?'Criar conta da empresa':'Entrar na empresa','<form class="stack" id="ws-auth">'+fld('E-mail','email','','email','required autocomplete="email"')+fld('Senha','password','','password','required autocomplete="'+(signup?'new-password':'current-password')+'" '+(signup?'minlength="8"':''))+submit(signup?'Criar conta':'Entrar')+'</form>');
-    const f=document.getElementById('ws-auth');f.onsubmit=e=>{e.preventDefault();progress(f,async()=>{const email=f.elements.email.value.trim(),password=f.elements.password.value;
-      const result=await auth(signup?'signup?redirect_to='+encodeURIComponent(location.origin+'/portal'):'token?grant_type=password','POST',{email,password});f.elements.password.value='';
-      if(!result.access_token){f.querySelector('output').textContent='Confira o e-mail de confirmação e depois entre com sua senha.';return}
-      takeSession(result);dialog.close();await reload();
-    })}}
+  async function reload(){if(!AtendaAuth.session){location.replace('/login');return}loading=true;fault='';try{await api()}catch(e){fault=e.message}finally{loading=false;render()}}
+  function guest(){return '<section class="card ws-gate"><h2>'+ (loading?'Abrindo sua empresa…':fault?'Acesso ao painel':'Sua área privada')+'</h2><p>'+esc(loading?'Carregando os dados da conta.':fault||'Entre com o e-mail da empresa para acessar seus cadastros, arquivos e integrações.')+'</p>'+(loading?'':AtendaAuth.session?btn('Tentar novamente','reload')+' '+btn('Sair','logout'):btn('Entrar','login','',true)+' '+btn('Criar conta','signup'))+'</section>'}
+  function accountForm(signup){location.assign(signup?'/cadastro':'/login')}
   function passwordForm(){modal('Alterar senha','<form class="stack" id="ws-password">'+fld('Senha atual','old','','password','required autocomplete="current-password"')+fld('Nova senha','next','','password','required minlength="8" autocomplete="new-password"')+fld('Confirmar nova senha','confirm','','password','required minlength="8" autocomplete="new-password"')+submit('Alterar senha')+'</form>');
     const f=document.getElementById('ws-password');f.onsubmit=e=>{e.preventDefault();progress(f,async()=>{const v=Object.fromEntries(new FormData(f));if(v.next!==v.confirm)throw Error('As novas senhas precisam coincidir.');
-      const result=await auth('token?grant_type=password','POST',{email,password:v.old});takeSession(result);await auth('user','PUT',{password:v.next},session.access_token);f.reset();f.querySelector('output').textContent='Senha atualizada.';
+      const result=await auth('token?grant_type=password','POST',{email,password:v.old});takeSession(result);await auth('user','PUT',{password:v.next},AtendaAuth.session.access_token);f.reset();f.querySelector('output').textContent='Senha atualizada.';
     })}}
   function settings(){
     const names=['Empresa','Perfil e acesso','Financeiro'],p=state.profile;
@@ -121,12 +103,11 @@ const Empresa = (() => {
     if(/site|website/i.test(msg))return p.website||'';
     if(/sobre a empresa|qual.*empresa|o que.*empresa|qual.*setor/i.test(msg))return [p.company,p.sector,p.about].filter(Boolean).join(' · ');
     return '';}
-  function reset(){keep(null);state=empty();email='';rev='';fault='';section='leads';searchText='';returnToTrial=null;if(dialog.open)dialog.close();render()}
   document.addEventListener('click',async event=>{const b=event.target.closest('[data-wop]');if(!b)return;const {wop:op,wid:id}=b.dataset;
     try{
       if(op==='login'||op==='signup')return accountForm(op==='signup');
       if(op==='reload')return reload();
-      if(op==='logout'){const t=session?.access_token;reset();if(t)await auth('logout?scope=local','POST',null,t).catch(()=>{});return}
+      if(op==='logout'){document.body.classList.add('signing-out');try{await AtendaAuth.logout()}finally{location.replace('/login')}return}
       if(op==='settingsTab'){settingsTab=id;return render()}
       if(op==='section'){section=id;searchText='';return render()}
       if(op==='payments'){section='payments';searchText='';return go('panel')}

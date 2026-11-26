@@ -36,7 +36,7 @@ http.createServer(async(req,res)=>{
  if(req.url.split('?')[0]!=='/api/workspace'&&!timingSafeEqual(authorized,hash(req.headers.authorization||''))){res.writeHead(401,{'WWW-Authenticate':'Basic realm="Atenda", charset="UTF-8"'});return res.end()}
  const json=(code,v)=>{res.writeHead(code,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(v))};
  try{
- const pages=new Map([['/','index.html'],['/index.html','index.html'],['/portal','portal.html'],['/portal/','portal.html'],['/portal.html','portal.html'],['/empresa.js','empresa.js'],['/empresa.css','empresa.css'],['/dot.png','dot.png'],['/dot-motion.js','dot-motion.js']]);
+ const pages=new Map([['/','index.html'],['/index.html','index.html'],['/portal','portal.html'],['/portal/','portal.html'],['/portal.html','portal.html'],['/login','acesso.html'],['/cadastro','acesso.html'],['/conta.js','conta.js'],['/central.js','central.js'],['/portal-acesso.js','portal-acesso.js'],['/empresa.js','empresa.js'],['/empresa.css','empresa.css'],['/dot.png','dot.png'],['/dot-motion.js','dot-motion.js']]);
  const asset=pages.get(req.url.split('?')[0]);
  if(asset&&req.method==='GET'){
   const content=await readFile(new URL('./dist/'+asset,import.meta.url));

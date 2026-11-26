@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f7f4fa"><meta name="referrer" content="no-referrer"><title>Acesso · Atenda</title>
+<style>
+*{box-sizing:border-box}body{margin:0;color:#322039;background:#fbf9fb;font:16px/1.5 Geist,Inter,system-ui,sans-serif}main{min-height:100svh;display:grid;grid-template-columns:minmax(320px,.95fr) 1.05fr}.portrait{position:relative;isolation:isolate;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;padding:clamp(28px,5vw,80px);background:radial-gradient(ellipse at 50% 65%,#dfbdec,#e9d6f1 55%,#f0e6f5);min-width:0}.brand{display:inline-flex;width:max-content;align-items:center;gap:10px;font-size:32px;font-weight:720;letter-spacing:-2px;color:inherit;text-decoration:none}.brand i{display:grid;place-items:center;background:#382540;color:#f4e9fc;border-radius:10px 10px 10px 2px;width:31px;height:30px;font:700 20px system-ui}.photo{align-self:center;position:relative;width:min(95%,410px);margin:40px 0}.photo:before{content:'';position:absolute;inset:16% -15% 0;border-radius:50%;border:1px solid #af8abb80;transform:rotate(-22deg);z-index:-1}.photo img{width:100%;height:auto;display:block;transform-origin:50% 86%;animation:respira 4s ease-in-out infinite}@keyframes respira{50%{transform:translateY(-4px) rotate(-1deg)}}.portrait p{margin:0;font-size:15px;color:#66496f}.entry{display:grid;align-content:center;justify-items:center;padding:48px 7vw}.content{width:min(100%,420px)}.content h1{font:400 clamp(43px,5.2vw,74px)/1.02 Georgia,serif;letter-spacing:-.065em;margin:0 0 26px}.field{display:grid;gap:7px;margin-bottom:17px;font-size:15px;font-weight:550}.field input{width:100%;font:inherit;border:1px solid #cfc4d5;background:white;color:#322039;border-radius:11px;padding:13px}.field small{font-size:13px;font-weight:400;color:#65566d}.submit{width:100%;margin-top:6px;border:0;border-radius:24px;background:#3b2344;color:white;line-height:1.5;font-family:inherit;font-size:16px;font-weight:600;cursor:pointer;padding:13px 20px}.submit:disabled{opacity:.65}.switch{font-size:15px;margin:22px 0 0;text-align:center}.switch a,.back{color:#592c70;font-weight:600;text-underline-offset:3px}.back{display:inline-block;margin-top:32px;font-size:14px}.notice{display:block;color:#5a316a;overflow-wrap:anywhere}.notice:not(:empty){margin-top:14px}.brand:focus-visible,a:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid #9266b4;outline-offset:3px}[hidden]{display:none!important}
+@media(max-width:760px){main{grid-template-columns:1fr;align-content:start}.portrait{padding:18px 7vw;flex-direction:row;align-items:center;min-height:112px}.photo{width:88px;margin:0 18px 0 0}.portrait p{display:none}.entry{padding:42px 7vw}.content{max-width:450px}.content h1{font-size:48px}}@media(prefers-reduced-motion:reduce){.photo img{animation:none}}
+</style></head><body><main><div class="portrait"><a class="brand" href="/" aria-label="Atenda, página inicial"><i>a</i>atenda</a><div class="photo"><img src="/dot.png" width="1254" height="1254" alt="Dot, o assistente do Atenda"></div><p>Grupo MF</p></div><section class="entry"><div class="content"><h1 id="heading">Entrar no Atenda</h1>
+<form id="account" method="post"><label class="field">E-mail<input name="email" type="email" required autocomplete="email" maxlength="254"></label><label class="field">Senha<input aria-label="Senha" aria-describedby="hint" name="password" type="password" required autocomplete="current-password"><small id="hint" hidden>Use pelo menos 8 caracteres.</small></label><label class="field" id="repeat" hidden>Confirmar senha<input name="confirmation" type="password" autocomplete="new-password" disabled></label><button class="submit" id="send" disabled>Entrar</button></form>
+<p id="notice" class="notice" role="status" aria-live="polite"></p><p class="switch"><span id="prompt">Primeira vez por aqui?</span> <a id="switch" href="/cadastro">Criar conta</a></p><a class="back" href="/">Voltar ao início</a><noscript>Ative o JavaScript para acessar sua conta.</noscript></div></section></main>
+<script src="/conta.js"></script><script>
+(()=>{
+  const signup=location.pathname.replace(/\/$/,'')==='/cadastro',form=document.getElementById('account'),pass=form.elements.password,confirm=form.elements.confirmation,notice=document.getElementById('notice'),send=document.getElementById('send');
+  const title=signup?'Criar sua conta':'Entrar no Atenda';
+  document.title=title+' · Atenda';document.getElementById('heading').textContent=title;
+  const switchLink=document.getElementById('switch');
+  if(signup){document.getElementById('repeat').hidden=false;document.getElementById('hint').hidden=false;pass.minLength=8;pass.autocomplete='new-password';confirm.disabled=false;confirm.required=true;document.getElementById('prompt').textContent='Já tem uma conta?';switchLink.href='/login';switchLink.textContent='Entrar';send.textContent='Criar conta'}
+  const fragment=new URLSearchParams(location.hash.slice(1));
+  if(fragment.size){history.replaceState(null,'',location.pathname+location.search);notice.textContent=fragment.has('error')?'O link expirou ou não é válido. Tente entrar com seu e-mail.':fragment.has('access_token')?'Seu e-mail foi confirmado. Entre com sua senha.':''}
+  send.disabled=false;
+  form.onsubmit=async event=>{
+    event.preventDefault();if(send.disabled)return;
+    if(signup&&pass.value!==confirm.value){confirm.setCustomValidity('As senhas precisam coincidir.');confirm.reportValidity();return}
+    send.disabled=true;notice.textContent=signup?'Criando sua conta…':'Entrando…';
+    try{
+      const route=signup?'signup?redirect_to='+encodeURIComponent(location.origin+'/login'):'token?grant_type=password';
+      const result=await AtendaAuth.request(route,'POST',{email:form.elements.email.value.trim(),password:pass.value});
+      if(!result.access_token){
+        if(!signup)throw Error('Não foi possível iniciar a sessão.');
+        form.hidden=true;pass.value='';confirm.value='';document.getElementById('heading').textContent='Confira seu e-mail';
+        notice.textContent='Confirme o cadastro pelo link enviado ao seu e-mail. Depois, entre com a sua senha.';return;
+      }
+      AtendaAuth.save(result);sessionStorage.setItem('atenda.auth.v2','1');location.replace('/portal');
+    }catch(e){notice.textContent=e.name==='TypeError'||e.name==='TimeoutError'?'Não foi possível conectar. Tente novamente.':e.message}
+    finally{send.disabled=false}
+  };
+  form.oninput=()=>confirm.setCustomValidity('');
+  if(!signup&&AtendaAuth.session&&!fragment.size){send.disabled=true;AtendaAuth.verify().then(()=>location.replace('/portal')).catch(()=>{}).finally(()=>send.disabled=false)}
+})();
+</script></body></html>

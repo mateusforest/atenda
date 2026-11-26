@@ -6,6 +6,14 @@
     {
       "source": "/portal",
       "destination": "/portal.html"
+    },
+    {
+      "source": "/login",
+      "destination": "/acesso.html"
+    },
+    {
+      "source": "/cadastro",
+      "destination": "/acesso.html"
     }
   ]
 }
