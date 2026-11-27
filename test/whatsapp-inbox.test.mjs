@@ -57,3 +57,29 @@ test('falha após o início do envio mantém a tentativa bloqueada para repetiç
   await assert.rejects(run(cmd),{status:502});await assert.rejects(run(cmd),{status:409});assert.equal(attempts,1);
   db.close();
 });
+
+test('somente o dono inicia pareamento e as consultas de QR não reiniciam a sessão',async()=>{
+  const owner={id:randomUUID(),email:'owner@example.test'};
+  let starts=0,connected=false,ready=false;
+  const gateway=async(path,body)=>{
+    if(path==='sessions')return [{sessionId:'test',status:connected?'CONNECTED':'LOGGED_OUT'}];
+    if(path==='sessions/test')return {status:connected?'CONNECTED':'LOGGED_OUT'};
+    if(path==='sessions/test/start'){starts++;assert.deepEqual(body,{importHistory:false});return {}}
+    if(path==='sessions/test/qr'){
+      if(!ready)throw Object.assign(new Error('no QR'),{gatewayStatus:404});
+      return {base64:'data:image/png;base64,YQ=='};
+    }
+    assert.fail(path);
+  };
+  const run=receiver({db:new DatabaseSync(':memory:'),session:'test',sessionId:'test',ownerEmail:owner.email,gateway});
+  await assert.rejects(run({op:'connect',owner:{...owner,email:'other@example.test'}}),{status:403});
+  assert.deepEqual(await run({op:'pairing',owner}),{state:'stopped'});
+  await assert.rejects(run({op:'profile',owner}),{status:409});
+  assert.equal(starts,0);
+  await Promise.all([run({op:'connect',owner}),run({op:'connect',owner})]);
+  ready=true;
+  assert.deepEqual(await run({op:'pairing',owner}),{state:'pairing',qr:'data:image/png;base64,YQ=='});
+  connected=true;
+  assert.deepEqual(await run({op:'pairing',owner}),{state:'connected'});
+  assert.equal(starts,1);
+});

@@ -33,13 +33,15 @@ export default async function inbox(req,res) {
     let command;
     if(req.method==='GET'){
       const op=params.get('view')||'chats', jid=params.get('jid');
-      if(!['status','profile','chats','history'].includes(op)||op==='history'&&!privateJid.test(jid))throw fault(400,'Conversa inválida.');
+      if(!['status','pairing','profile','chats','history'].includes(op)||op==='history'&&!privateJid.test(jid))throw fault(400,'Conversa inválida.');
       const scope=params.get('scope')||'all', page=Number(params.get('page')||1);
       if(!['all','waiting','answered','team'].includes(scope)||!Number.isSafeInteger(page)||page<1||page>100000)throw fault(400,'Filtro de conversas inválido.');
       command={op,jid,owner,scope,page};
     } else if(req.method==='POST'){
       const body=typeof req.body==='string'?JSON.parse(req.body):req.body;
-      if(body?.op==='editProfile'){
+      if(body?.op==='connect'){
+        command={op:'connect',owner};
+      }else if(body?.op==='editProfile'){
         if(!['picture','name','status'].includes(body.field)||typeof body.value!=='string'||body.value.length>(body.field==='picture'?190000:139))throw fault(400,'Perfil inválido.');
         command={op:'editProfile',owner,field:body.field,value:body.value};
       }else if(body?.op==='automatic'){
@@ -64,6 +66,7 @@ export default async function inbox(req,res) {
       command={op:'send',owner,jid:body.jid,requestId:body.requestId,text:body.text.trim()};
       }
     } else throw fault(405,'Método inválido.');
+    if(meta?.active && ['pairing','connect'].includes(command.op))throw fault(409,'Este canal usa a API da Meta e não possui pareamento por QR.');
     json(200,await dispatch(command));
   } catch(error){json(error.status||503,{error:error.status?error.message:'O serviço de atendimento está indisponível.'})}
 }

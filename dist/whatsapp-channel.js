@@ -6,6 +6,7 @@ class AtendaWhatsApp extends HTMLElement {
     this.image = document.createElement('img');
     this.image.alt = 'QR Code de pareamento do WhatsApp';
     this.image.width = 280;
+    this.image.style.maxWidth = '100%';
     this.image.hidden = true;
     this.historyChoice = document.createElement('input');
     this.historyChoice.type = 'checkbox';
@@ -15,7 +16,7 @@ class AtendaWhatsApp extends HTMLElement {
     this.historyLabel.hidden = true;
     this.actions = document.createElement('div');
     this.replaceChildren(this.message, this.image, this.historyLabel, this.actions);
-    this.refresh();
+    this.refresh(this.hasAttribute('start-on-open'));
   }
 
   disconnectedCallback() {
@@ -42,10 +43,10 @@ class AtendaWhatsApp extends HTMLElement {
     try {
       const account = this.hasAttribute('account');
       const headers = account ? {Authorization:'Bearer '+await AtendaAuth.access()} : {'X-Atenda-Panel':'1'};
-      const response = await fetch(account ? '/api/inbox?view=status' : '/api/whatsapp', {
+      const response = await fetch(account ? '/api/inbox?view=pairing' : '/api/whatsapp', {
         method: connect ? 'POST' : 'GET',
         headers: connect ? {...headers,'Content-Type':'application/json'} : headers,
-        body: connect ? JSON.stringify({importHistory:this.historyChoice.checked}) : undefined,
+        body: connect ? JSON.stringify(account?{op:'connect'}:{importHistory:this.historyChoice.checked}) : undefined,
         cache: 'no-store',
         signal: request.signal
       });
@@ -59,19 +60,23 @@ class AtendaWhatsApp extends HTMLElement {
         missing: 'A sessão ainda não foi criada.',
         stopped: 'A sessão está parada.',
         waiting: 'Aguardando o QR do WhatsApp…',
-        pairing: 'No WhatsApp do celular, abra Aparelhos conectados e escaneie o código.',
+        pairing: 'Exiba este código em outra tela. No celular do número, abra WhatsApp → Aparelhos conectados → Conectar aparelho e escaneie o QR.',
         offline: 'O WhatsApp está desconectado no Windows.',
         connected: 'Conectado'
       };
       this.historyLabel.hidden = account || !['missing','stopped'].includes(result.state);
-      this.message.textContent = messages[result.state] || 'Estado de sessão desconhecido.';
+      const detail = messages[result.state] || 'Estado de sessão desconhecido.';
+      if (this.message.textContent !== detail) this.message.textContent = detail;
       this.image.hidden = result.state !== 'pairing';
       if (this.image.hidden) this.image.removeAttribute('src');
       else if (this.image.getAttribute('src') !== result.qr) this.image.src = result.qr;
       if (account && result.state === 'connected') {
+        accountChannel.refresh();
         this.button('Abrir conversas', () => go('chat'));
+        return;
       } else if (['missing','stopped'].includes(result.state)) {
         this.button('Conectar WhatsApp', () => this.refresh(true));
+        if (account) return;
       } else if (result.state === 'connected' && this.hasAttribute('replies')) {
         this.button('Configurar resposta automática', () => this.dispatchEvent(new Event('atenda-reply-setup', {bubbles:true})));
       }
@@ -136,7 +141,7 @@ const accountChannel = (() => {
     pending = true;
     try {
       const result = await whatsappInboxRequest('?view=status', {signal:AbortSignal.timeout(30000)});
-      snapshot = {state:result.state};
+      snapshot = {state:result.state,canPair:result.canPair===true};
     } catch (error) {
       snapshot = {state:'unknown', message:error.message};
     } finally {
@@ -164,7 +169,7 @@ const accountChannel = (() => {
 class WhatsAppSessionIndicator extends HTMLElement {
   connectedCallback() {accountChannel.subscribe(this);}
   disconnectedCallback() {accountChannel.remove(this);}
-  paint({state, message}) {
+  paint({state, message, canPair}) {
     const info = {
       checking:['Verificando', 'Consultando a conexão do número.'],
       connected:['Ativo', 'Número conectado ao WhatsApp.'],
@@ -173,7 +178,8 @@ class WhatsAppSessionIndicator extends HTMLElement {
     };
     if (!Object.hasOwn(info, state)) state = 'unknown';
     const [label, detail] = info[state];
-    if (this.dataset.state === state && this.title === detail) return;
+    if (this.dataset.state === state && this.title === detail && this.canPair === canPair) return;
+    this.canPair = canPair;
     this.dataset.state = state;
     this.title = detail;
     const badge = document.createElement('span');
@@ -192,6 +198,19 @@ class WhatsAppSessionIndicator extends HTMLElement {
     description.className = 'muted';
     description.textContent = detail;
     this.append(description);
+    if (state === 'offline' && canPair) {
+      const reconnect = document.createElement('button');
+      reconnect.className = 'btn';
+      reconnect.type = 'button';
+      reconnect.textContent = 'Reconectar por QR Code';
+      reconnect.onclick = () => {
+        const pairing = document.createElement('atenda-whatsapp');
+        pairing.setAttribute('account','');
+        pairing.setAttribute('start-on-open','');
+        this.replaceChildren(pairing);
+      };
+      this.append(reconnect);
+    }
     if (state !== 'checking') {
       const button = document.createElement('button');
       button.className = state === 'connected' ? 'btn' : 'btn light';
@@ -207,18 +226,35 @@ class WhatsAppProfile extends HTMLElement {
   connectedCallback(){
     this.innerHTML='<div class="wa-profile"><img alt="Foto do número conectado" hidden referrerpolicy="no-referrer"><div><h2>Perfil do WhatsApp</h2><strong data-name></strong><p data-number></p><p data-about></p></div></div><div class="actions"><button class="btn light" data-edit disabled>Editar perfil</button><button class="link" data-refresh>Atualizar</button></div><output role="status"></output>';
     this.querySelector('[data-edit]').onclick=()=>this.edit();
-    this.querySelector('[data-refresh]').onclick=()=>this.load();this.load();
+    this.querySelector('[data-refresh]').onclick=()=>this.load();
+    this.channelState=null;
+    accountChannel.subscribe(this);
+  }
+  disconnectedCallback(){accountChannel.remove(this);this.profileRequest?.abort();}
+  paint({state,message}){
+    if(this.channelState===state && state!=='unknown')return;
+    this.channelState=state;
+    this.querySelector('[data-refresh]').disabled=state!=='connected';
+    if(state==='connected'){this.load();return}
+    this.profileRequest?.abort();
+    this.profile=null;
+    const img=this.querySelector('img');img.hidden=true;img.removeAttribute('src');
+    for(const field of ['name','number','about'])this.querySelector('[data-'+field+']').textContent='';
+    this.querySelector('[data-edit]').disabled=true;
+    this.querySelector('output').textContent=state==='offline'?'Conecte o número para carregar o perfil.':message||'Verificando a conexão…';
   }
   async load(){
+    this.profileRequest?.abort();
+    const request=this.profileRequest=new AbortController();
     const output=this.querySelector('output');output.textContent='Consultando o perfil…';
     try{
-      const p=await whatsappInboxRequest('?view=profile');if(!this.isConnected)return;this.profile=p;
+      const p=await whatsappInboxRequest('?view=profile',{signal:request.signal});if(!this.isConnected||request.signal.aborted)return;this.profile=p;
       const img=this.querySelector('img');img.hidden=!p.photo;if(p.photo)img.src=p.photo;else img.removeAttribute('src');
       this.querySelector('[data-name]').textContent=p.name||'Nome indisponível';
       this.querySelector('[data-number]').textContent=p.number||'Número indisponível';
       this.querySelector('[data-about]').textContent=p.about||'Sem recado disponível.';
       output.textContent=p.crmIssue||'';this.querySelector('[data-edit]').disabled=p.editable===false;
-    }catch(e){output.textContent=e.message}
+    }catch(e){if(!request.signal.aborted){output.textContent=e.message;accountChannel.refresh()}}
   }
   edit(){
     modal('Editar perfil do WhatsApp','<form id="wa-profile-form" class="stack"><label class="field">Nome no WhatsApp<input name="name" maxlength="25"></label><label class="field">Recado<textarea name="about" maxlength="139"></textarea></label><label class="field">Nova foto<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label><button class="btn">Salvar no WhatsApp</button><output role="status"></output></form>');

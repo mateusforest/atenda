@@ -25,15 +25,48 @@ export function receiver({db,gateway,session,sessionId,ownerEmail,official,autom
     const value=String(text||'');
     return value.length>max?value.slice(0,max-1)+'…':value;
   }
+  let starting, lastStart = 0;
+  const channelPath = 'sessions/'+session;
+  async function pairing(start) {
+    const sessions = await gateway('sessions');
+    let row = sessions.find(item=>item.sessionId===sessionId);
+    if (!row) {
+      if (!start) return {state:'missing'};
+      await gateway('sessions',{sessionId,name:'Atenda'});
+      row={status:'STOPPED'};
+    }
+    if (row.status==='CONNECTED') return {state:'connected'};
+    const idle = ['STOPPED','LOGGED_OUT'].includes(row.status);
+    if (start && idle && Date.now()-lastStart>20000) {
+      await gateway(channelPath+'/start',{importHistory:false});
+      lastStart=Date.now();
+    }
+    try {
+      const qr=await gateway(channelPath+'/qr');
+      if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(qr.base64)) throw fault(502,'O gateway retornou um QR inválido.');
+      return {state:'pairing',qr:qr.base64};
+    } catch(error) {
+      if(error.gatewayStatus===404) return {state:idle && Date.now()-lastStart>20000?'stopped':'waiting'};
+      if(error.gatewayStatus===400 && (await gateway('sessions')).some(item=>item.sessionId===sessionId && item.status==='CONNECTED'))return {state:'connected'};
+      throw error;
+    }
+  }
   return async function execute(cmd){
     if(cmd.op==='health'||cmd.op==='status'){
       if(cmd.op==='status')verifyOwner(cmd.owner);
       const rows=await gateway('sessions'), row=rows.find(s=>s.sessionId===sessionId);
-      return {state:row?.status==='CONNECTED'?'connected':'offline'};
+      return {state:row?.status==='CONNECTED'?'connected':'offline',...(cmd.op==='status'?{canPair:true}:{})};
     }
     verifyOwner(cmd.owner);
+    if(cmd.op==='pairing')return pairing(false);
+    if(cmd.op==='connect'){
+      starting??=pairing(true).finally(()=>{starting=null});
+      return starting;
+    }
     if(cmd.op==='profile'){
-      const [p,s]=await Promise.all([gateway('profile/'+session),gateway('sessions/'+session)]);
+      const s=await gateway(channelPath);
+      if(s.status && s.status!=='CONNECTED')throw fault(409,'Reconecte o número para consultar o perfil.');
+      const p=await gateway('profile/'+session);
       const phone=String(s.me?.id||'').match(/^(\d+)(?::\d+)?@s\.whatsapp\.net$/)?.[1];
       return {name:p.name||s.me?.name||'',number:phone?'+'+phone:'',about:typeof p.status==='string'?p.status:p.status?.status||'',photo:whatsappPhoto(p.pictureUrl),crmIssue:crmIssue()};
     }
