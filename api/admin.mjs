@@ -2,6 +2,7 @@ import {callWindows,fault,uuid} from '../lib/wa-transport.mjs';
 import {userOf} from './billing.mjs';
 import {dashboard,jobs,acknowledge,registerAccount,phoneNumber} from '../lib/administration.mjs';
 import {isWorker} from '../lib/official-channel.mjs';
+import {saveLunaKey,lunaKey} from '../lib/luna-key.mjs';
 
 async function signup(body){
   const email=typeof body.email==='string'?body.email.trim():'',password=body.password;
@@ -36,6 +37,8 @@ export default async function admin(req,res){
     const allowed=!!process.env.ATENDA_ADMIN_ID&&user.id===process.env.ATENDA_ADMIN_ID;
     if(action==='visit'&&req.method==='POST'){await registerAccount(user);return send(200,{admin:allowed})}
     if(!allowed)throw fault(403,'Esta área é exclusiva do proprietário da Atenda.');
+    if(action==='luna'&&req.method==='POST'){await saveLunaKey(body.key);return send(200,{configured:true})}
+    if(action==='luna'&&req.method==='GET')return send(200,{configured:!!await lunaKey()});
     if(action==='overview'&&req.method==='GET'){
       const offset=Number(params.get('offset')||0);
       if(!Number.isSafeInteger(offset)||offset<0)throw fault(400,'Página inválida.');

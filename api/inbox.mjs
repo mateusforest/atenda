@@ -1,5 +1,6 @@
 import {callWindows, fault, privateJid, uuid} from '../lib/wa-transport.mjs';
 import {lunaReply} from '../lib/luna.mjs';
+import {lunaKey} from '../lib/luna-key.mjs';
 import {trialReply} from '../lib/agent-profile.mjs';
 
 export default async function inbox(req,res) {
@@ -21,7 +22,7 @@ export default async function inbox(req,res) {
     const isOwner=user.email?.toLowerCase()===WA_OWNER_EMAIL.toLowerCase();
     if(!isOwner){
       const b=req.method==='POST'&&(typeof req.body==='string'?JSON.parse(req.body):req.body);
-      if(b?.op!=='trial'||!process.env.OPENAI_API_KEY)throw fault(403,'Esta conta não possui este canal de WhatsApp.');
+      if(b?.op!=='trial')throw fault(403,'Esta conta não possui este canal de WhatsApp.');
       const {hasCurrentPayment}=await import('../lib/subscriber-access.mjs');
       if(!await hasCurrentPayment(user.id))throw fault(403,'O teste do Luna requer uma mensalidade vigente.');
     }
@@ -40,10 +41,13 @@ export default async function inbox(req,res) {
         if(body.op!=='trial'&&!privateJid.test(body.jid))throw fault(400,'Conversa inválida.');
         if(!['trial','review'].includes(body.op)&&(typeof body.messageId!=='string'||!body.messageId||body.messageId.length>200))throw fault(400,'Mensagem inválida.');
         if(JSON.stringify(body).length>40000)throw fault(413,'Contexto muito longo.');
-        if(body.op==='trial'&&process.env.OPENAI_API_KEY)return json(200,await trialReply(lunaReply,body.profile,body.history));
-        if(body.op==='suggest'&&process.env.OPENAI_API_KEY){
+        const key=['trial','suggest'].includes(body.op)?await lunaKey():'';
+        if(!isOwner&&!key)throw fault(503,'O Luna ainda precisa de uma chave na administração.');
+        const draft=(p,h)=>lunaReply(p,h,{key});
+        if(body.op==='trial'&&key)return json(200,await trialReply(draft,body.profile,body.history));
+        if(body.op==='suggest'&&key){
           const result=await callWindows({op:'suggestContext',owner,jid:body.jid,profile:body.profile,messageId:body.messageId});
-          return json(200,result.context?await lunaReply(body.profile,result.context):result);
+          return json(200,result.context?await draft(body.profile,result.context):result);
         }
         command={op:body.op,owner,jid:body.jid,messageId:body.messageId,profile:body.profile,history:body.history,offset:body.offset};
       }else{

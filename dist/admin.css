@@ -13,3 +13,4 @@ button.light { border-color:#cbbdcb; background:transparent; }
   button { transition:transform .18s,box-shadow .18s; }
   button:enabled:hover { transform:translateY(-2px); box-shadow:0 3px 0 #bda5c1; }
 }
+#key-form label{font-weight:600}#key-form .actions{margin-top:6px}#luna-key{flex:1;min-width:12em;max-width:32em;padding:10px 12px;font:inherit;border:1px solid #cbbcca;border-radius:8px}

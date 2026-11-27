@@ -3,6 +3,9 @@
 <body><header><a class="brand" href="/admin"><i>a</i>atenda</a><span>Administração</span><a class="portal" href="/portal">Central de atendimento ↗</a></header>
 <main><h1>Administração da Atenda</h1><output id="access" role="status">Verificando acesso…</output>
 <div id="workspace" hidden>
+<section id="luna"><div class="section-head"><h2>Luna na nuvem</h2><strong id="key-state" class="badge">Consultando</strong></div>
+<p>Use uma chave do projeto da OpenAI que vai atender seus clientes. A Atenda testa o acesso ao Luna antes de salvar.</p>
+<form id="key-form"><label for="luna-key">Chave da OpenAI</label><div class="actions"><input id="luna-key" type="password" autocomplete="off" spellcheck="false" autocapitalize="none" maxlength="510" required placeholder="sk-…"><button type="submit">Validar e salvar chave</button></div></form><output id="key-message" role="status"></output></section>
 <section><div class="section-head"><h2>WhatsApp oficial</h2><strong id="state" class="badge">Consultando</strong></div>
 <p>Este número dá as boas-vindas no cadastro, orienta quem escreve e envia avisos de mensalidade.</p>
 <div id="pair" hidden><img id="qr" width="220" height="220" alt="QR para vincular o WhatsApp oficial da Atenda"><p>No celular do suporte, abra <b>Aparelhos conectados → Conectar aparelho</b>.</p></div>

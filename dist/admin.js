@@ -53,6 +53,18 @@
   }
   el('connect').onclick=()=>sync('connect');el('toggle').onclick=()=>sync(channel.enabled?'pause':'resume');el('refresh').onclick=()=>sync();
   el('previous').onclick=()=>accounts(Math.max(0,offset-25));el('next').onclick=()=>accounts(offset+25);el('reload').onclick=()=>accounts(offset);
+  const keyState=d=>{el('key-state').textContent=d.configured?'Chave configurada':'Aguardando chave'};
+  el('key-form').onsubmit=async event=>{
+    event.preventDefault();
+    const field=el('luna-key'),button=event.submitter||el('key-form').querySelector('button');
+    if(button.disabled)return;
+    button.disabled=true;el('key-message').textContent='Testando o Luna…';
+    try{const request=api('luna',{key:field.value.trim()});field.value='';keyState(await request);el('key-message').textContent='O Luna respondeu. Chave salva.'}
+    catch(e){if(!denial(e))el('key-message').textContent=e.message}
+    finally{button.disabled=false}
+  };
   if(!AtendaAuth.session){location.replace('/login?next=admin');return}
+  api('luna').then(d=>{keyState(d);el('workspace').hidden=false;el('access').textContent='';if(location.hash==='#luna')el('luna-key').focus()})
+    .catch(e=>{if(!denial(e)){el('key-state').textContent='Indisponível';el('key-message').textContent=e.message}});
   accounts(0).then(ok=>{if(ok)sync()});
 })();
