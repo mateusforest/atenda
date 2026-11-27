@@ -84,10 +84,17 @@
               ><span class="presence"><i class="led"></i> Disponível</span>
             </button>
             <div class="dotControls">
-              <span class="touchHint">Toque no Dot</span
-              ><button id="latest" hidden></button
-              ><button id="simulate">Simular mensagem</button>
+              <button id="simulate">Simular mensagem</button>
+              <button id="voiceToggle" aria-pressed="false">Ouvir o Dot</button>
             </div>
+            <div id="heroExchange" class="heroExchange" hidden>
+              <small>Conversa de exemplo</small>
+              <div aria-live="polite" aria-relevant="additions text">
+                <p><strong id="sender"></strong><span id="incomingText"></span></p>
+                <p id="dotResponse" hidden><strong>Dot</strong><span id="replyText"></span></p>
+              </div>
+            </div>
+            <div id="voiceStatus" class="voiceStatus" role="status"></div>
           </div>
         </section>
         <section class="band ask" id="perguntas">

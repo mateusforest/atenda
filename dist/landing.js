@@ -471,53 +471,70 @@ function react(event, notice) {
   }, 2400);
 }
 const samples = [
-  {
-    name: 'Nina',
-    message: 'Oi! Tem alguém disponível?',
-    suggestion: 'Oi, Nina! Estou aqui. Como posso ajudar?',
-  },
-  {
-    name: 'Davi',
-    message: 'Posso tirar uma dúvida rápida?',
-    suggestion: 'Oi, Davi! Claro, pode mandar sua pergunta.',
-  },
-  {
-    name: 'Lia',
-    message: 'Quero falar com a equipe.',
-    suggestion:
-      'Oi, Lia! Você já está falando com a equipe. Como posso ajudar?',
-  },
+  { name: 'Nina', message: 'Oi! Tem alguém disponível?', reply: 'Oi, Nina! Estou aqui. Como posso ajudar?', clip: 'nina' },
+  { name: 'Davi', message: 'Posso tirar uma dúvida rápida?', reply: 'Oi, Davi! Claro, pode mandar sua pergunta.', clip: 'davi' },
+  { name: 'Lia', message: 'Quero falar com a equipe.', reply: 'Oi, Lia! Vou chamar alguém da equipe pra continuar com você.', clip: 'lia' },
 ];
-let latestIncomingIndex = null;
+const voicePlayer = new Audio();
+voicePlayer.preload = 'none';
+let voiceEnabled = false;
+let voiceRequest = 0;
+let replyTimer;
+
+function setVoice(enabled) {
+  voiceEnabled = enabled;
+  el('voiceToggle').setAttribute('aria-pressed', String(enabled));
+  el('voiceToggle').textContent = enabled ? 'Desligar voz' : 'Ouvir o Dot';
+  el('voiceStatus').textContent = '';
+  if (!enabled) {
+    voiceRequest++;
+    voicePlayer.pause();
+  }
+}
+
+function speak(clip) {
+  if (!voiceEnabled || document.hidden) return;
+  const request = ++voiceRequest;
+  voicePlayer.src = '/dot-voz/' + clip + '.mp3';
+  voicePlayer.play().catch(() => {
+    if (request !== voiceRequest) return;
+    setVoice(false);
+    el('voiceStatus').textContent = 'Áudio indisponível. Toque em Ouvir o Dot para tentar de novo.';
+  });
+}
+
+el('voiceToggle').onclick = () => {
+  setVoice(!voiceEnabled);
+  if (voiceEnabled) speak('ola');
+};
+function silenceWhenHidden() {
+  if (document.hidden) setVoice(false);
+}
+document.addEventListener('visibilitychange', silenceWhenHidden);
+window.addEventListener('pagehide', () => setVoice(false));
+
 function receiveMessage() {
   clearTimeout(autoMessage);
-  const s = samples[arrivals];
-  if (!s) return;
-  contacts.push({
-    ...s,
-    initial: s.name[0],
-    wait: 0,
-    replies: [],
-    draft: '',
-    suggested: false,
-  });
-  latestIncomingIndex = contacts.length - 1;
+  clearTimeout(replyTimer);
+  const sample = samples[arrivals % samples.length];
   arrivals++;
-  paint();
-  react('message', s.name + ' mandou uma mensagem');
-  el('latest').hidden = false;
-  el('latest').textContent = 'Abrir ' + s.name + ' ↗';
-  if (arrivals === samples.length) {
-    el('simulate').disabled = true;
-    el('simulate').textContent = 'Amostras recebidas';
-  }
+  react('message', sample.name + ' mandou uma mensagem');
+  el('sender').textContent = sample.name;
+  el('incomingText').textContent = sample.message;
+  el('dotResponse').hidden = true;
+  el('heroExchange').hidden = false;
+  replyTimer = setTimeout(() => {
+    el('replyText').textContent = sample.reply;
+    el('dotResponse').hidden = false;
+    speak(sample.clip);
+  }, 750);
 }
 portrait.onclick = () => {
   react('touch', 'Tô aqui!');
+  speak('toque');
   if (!arrivals) scheduleMessage();
 };
 el('simulate').onclick = receiveMessage;
-el('latest').onclick = () => goDesk(latestIncomingIndex, true);
 function scheduleMessage() {
   syncIdle();
   clearTimeout(autoMessage);

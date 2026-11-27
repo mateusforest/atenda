@@ -1029,9 +1029,7 @@ textarea:focus-visible {
     margin-top: 13px;
   }
 }
-.dotControls:has(#latest:not([hidden])) .touchHint {
-  display: none;
-}
+
 
 #home.shell {
   max-width: none;
@@ -1703,4 +1701,26 @@ body:has(#home:not([hidden])) .dock {
   .landingFoot nav {
     gap: 16px;
   }
+}
+
+.heroGrid .dotControls { flex-wrap: wrap; }
+.dotControls #voiceToggle[aria-pressed='true'] { background: #54365c; color: white; }
+.heroExchange {
+  width: min(100%, 390px);
+  align-self: center;
+  padding: 10px 14px 12px;
+  border: 1px solid #d9c7de;
+  border-radius: 18px;
+  background: #fbf6fbe6;
+  color: #422b49;
+}
+.heroExchange small, .heroExchange strong { font-size: 13px; }
+.heroExchange small { color: #67546b; }
+.heroExchange p { width: fit-content; max-width: 92%; margin: 6px 0 0; padding: 6px 12px; border-radius: 12px 12px 12px 3px; background: white; }
+.heroExchange strong, .heroExchange span { display: block; }
+.heroExchange #dotResponse { margin-left: auto; background: #ebdcee; border-radius: 12px 12px 3px 12px; }
+.voiceStatus { text-align: center; font-size: 14px; color: #503655; }
+.voiceStatus:not(:empty) { padding: 6px; }
+@media (prefers-reduced-motion: no-preference) {
+  .heroExchange p { animation: messageAppear .25s ease-out; }
 }

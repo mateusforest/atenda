@@ -26,6 +26,7 @@ http.createServer(async(req,res)=>{
  try{
  const pages=new Map([['/','index.html'],['/index.html','index.html'],['/portal','portal.html'],['/portal/','portal.html'],['/portal.html','portal.html'],['/login','acesso.html'],['/cadastro','acesso.html'],['/conta.js','conta.js'],['/central.js','central.js'],['/portal-acesso.js','portal-acesso.js'],['/empresa.js','empresa.js'],['/empresa.css','empresa.css'],['/dot.png','dot.png'],['/dot-motion.js','dot-motion.js']]);
  for(const file of ['landing.css','landing.js','dot-landing.webp'])pages.set('/'+file,file);
+ for(const clip of ['ola','toque','nina','davi','lia'])pages.set('/dot-voz/'+clip+'.mp3','dot-voz/'+clip+'.mp3');
  pages.set('/favicon.ico','favicon.ico');
  pages.set('/dot-favicon-32.png','dot-favicon-32.png');
  pages.set('/whatsapp','whatsapp.html');
@@ -41,7 +42,7 @@ http.createServer(async(req,res)=>{
  const asset=localPortal?'whatsapp.html':pages.get(path);
  if(asset&&req.method==='GET'){
   const content=await readFile(new URL('./dist/'+asset,import.meta.url));
-  const type=asset.endsWith('.webp')?'image/webp':asset.endsWith('.ico')?'image/x-icon':asset.endsWith('.png')?'image/png':asset.endsWith('.css')?'text/css; charset=utf-8':/\.m?js$/.test(asset)?'text/javascript; charset=utf-8':'text/html; charset=utf-8';
+  const type=asset.endsWith('.mp3')?'audio/mpeg':asset.endsWith('.webp')?'image/webp':asset.endsWith('.ico')?'image/x-icon':asset.endsWith('.png')?'image/png':asset.endsWith('.css')?'text/css; charset=utf-8':/\.m?js$/.test(asset)?'text/javascript; charset=utf-8':'text/html; charset=utf-8';
   res.writeHead(200,{'Content-Type':type});return res.end(content)
  }
  if(['/api/workspace','/api/whatsapp','/api/inbox','/api/billing','/api/admin'].includes(path)){
