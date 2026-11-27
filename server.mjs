@@ -13,7 +13,7 @@ const operatorCookie='atenda_operator='+operatorToken;
 http.createServer(async(req,res)=>{
  res.setHeader('Cache-Control','no-store');res.setHeader('X-Frame-Options','DENY');res.setHeader('X-Content-Type-Options','nosniff');
  const path=req.url.split('?')[0];
- if(path!=='/api/workspace'&&path!=='/api/inbox'){
+ if(!['/api/workspace','/api/inbox','/api/billing'].includes(path)){
    const hasCookie=(req.headers.cookie||'').split(/;\s*/).some(cookie=>timingSafeEqual(hash(cookie),hash(operatorCookie)));
    if(!hasCookie){
      if(!timingSafeEqual(authorized,hash(req.headers.authorization||''))){
@@ -27,6 +27,7 @@ http.createServer(async(req,res)=>{
  const pages=new Map([['/','index.html'],['/index.html','index.html'],['/portal','portal.html'],['/portal/','portal.html'],['/portal.html','portal.html'],['/login','acesso.html'],['/cadastro','acesso.html'],['/conta.js','conta.js'],['/central.js','central.js'],['/portal-acesso.js','portal-acesso.js'],['/empresa.js','empresa.js'],['/empresa.css','empresa.css'],['/dot.png','dot.png'],['/dot-motion.js','dot-motion.js']]);
  pages.set('/whatsapp','whatsapp.html');
  pages.set('/inbox.js','inbox.js');
+ pages.set('/billing.js','billing.js');
  pages.set('/portal-ui.css','portal-ui.css');
  pages.set('/whatsapp-channel.js','whatsapp-channel.js');
  const localPortal=['/portal','/portal/','/portal.html'].includes(path) && !process.env.SUPABASE_URL;
@@ -36,8 +37,11 @@ http.createServer(async(req,res)=>{
   const type=asset.endsWith('.png')?'image/png':asset.endsWith('.css')?'text/css; charset=utf-8':asset.endsWith('.js')?'text/javascript; charset=utf-8':'text/html; charset=utf-8';
   res.writeHead(200,{'Content-Type':type});return res.end(content)
  }
- if(['/api/workspace','/api/whatsapp','/api/inbox'].includes(path)){
-   if(req.method==='POST'){const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>3000000)return json(413,{error:'Arquivo muito grande.'});chunks.push(chunk)}try{req.body=size?JSON.parse(Buffer.concat(chunks).toString()):undefined}catch{return json(400,{error:'JSON inválido.'})}}
+ if(['/api/workspace','/api/whatsapp','/api/inbox','/api/billing'].includes(path)){
+   if(req.method==='POST'){const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>3000000)return json(413,{error:'Arquivo muito grande.'});chunks.push(chunk)}
+     const raw=Buffer.concat(chunks).toString();
+     try{req.body=path==='/api/billing'&&req.headers['content-type']?.startsWith('application/x-www-form-urlencoded')?Object.fromEntries(new URLSearchParams(raw)):size?JSON.parse(raw):undefined}catch{return json(400,{error:'JSON inválido.'})}}
+   if(path==='/api/billing'){const {default:billing}=await import('./api/billing.mjs');return await billing(req,res)}
    if(path==='/api/inbox'){const {default:inbox}=await import('./api/inbox.mjs');return await inbox(req,res)}
    if(path==='/api/whatsapp')return await handleWhatsApp(req,res);
    const {workspace}=await import('./lib/workspace.mjs');return await workspace(req,res)

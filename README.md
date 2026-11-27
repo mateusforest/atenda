@@ -14,6 +14,18 @@ Para integrar uma API HTTPS, configure a busca GET, o parâmetro de consulta e/o
 
 ## Agentes e voz no Windows
 
+Com `OPENAI_API_KEY` no servidor do portal, as sugestões passam ao `gpt-6-luna`, via Responses API. O teste do agente roda na nuvem; nas conversas a IA recebe contexto do canal vinculado. O dono do canal e os assinantes com uma mensalidade vigente podem testar perfis; o piloto de WhatsApp ainda vincula uma conta a um canal. No conector, a mesma variável habilita a transcrição `gpt-transcribe`. Sem chave, o piloto existente identifica o motor local na tela. Em um host Linux com o gateway exposto apenas em loopback na porta 38741, configure `ATENDA_STATE_DIR` (persistente) e `ATENDA_MEDIA_DIR` (mídia do WA-AKG) para o conector.
+
 O conector usa o Ollama em loopback, com o modelo local definido em `ATENDA_AGENT_MODEL` (padrão `qwen3:8b`). A equipe pode testar um perfil em **Testar IA** ou pedir uma sugestão em **Conversas** e revisar o texto antes do envio. As preferências dos agentes continuam vinculadas ao navegador da conta.
 
 Para transcrição local, instale as dependências de `gateway/requirements-voz.txt` em um ambiente Python 3.12 em `%LOCALAPPDATA%\Atenda\voz-venv`. Em `atendimento.env`, defina `ATENDA_WHISPER_MODEL` com o caminho do modelo multilíngue local no formato faster-whisper. Ao abrir uma conversa cuja última mensagem é uma nota de voz recebida, o conector transcreve o áudio. Para as mensagens anteriores, use **Transcrever**. O áudio original pode ser ouvido em **Ouvir áudio**. O conector consulta o arquivo da sessão e da mensagem no Windows.
+
+## Assinaturas da Atenda
+
+O checkout em **Assinatura** usa Supabase Auth e Vercel Blob privado. O servidor calcula R$ 490 por mês, mais R$ 190 por agente adicional contratado. A escolha no simulador de equipe é independente da assinatura cobrada. Use as variáveis de `.env.example` apenas no servidor. O modo padrão é `sandbox`; produção exige `BILLING_ENV=production` e credenciais de produção. A conta PJ recebedora e os contratos do estabelecimento precisam estar habilitados.
+
+**Pix Automático Sicredi.** Use os endereços de token e de API Pix do ambiente e da versão informados pela cooperativa. O cliente OAuth usa certificado e chave PEM em Base64, conta e agência recebedoras. Os escopos são `rec.read rec.write cobr.read cobr.write payloadlocationrec.read payloadlocationrec.write` (ajustáveis por `SICREDI_PIX_SCOPES`). A autorização utiliza a jornada 2. O primeiro vencimento ocorre oito dias após a adesão. O cron diário protegido por `CRON_SECRET` consulta a autorização, agenda cada competência por um txid determinístico e consulta a liquidação. A resposta do banco é a fonte do estado. Monitore falhas do cron e reprocesse com GET autenticado em `/api/billing-cron`; cobranças fora da janela ficam registradas para conferência.
+
+**Cartão.** A opção Lyra/PayZen para associados Sicredi requer credenciamento e recorrência com token. Configure o identificador da loja, chave de assinatura HMAC-SHA-256, senha REST do mesmo ambiente e origem pública HTTPS. No Back Office, habilite notificações de autorização, cancelamento, atualização de transações e parcelas recorrentes para `/api/billing?action=card-notification`. A Atenda assina a ordem; o cliente autoriza o cartão na página segura do processador. Somente notificações assinadas atualizam as parcelas. O retorno do navegador abre o portal. A primeira parcela é imediata, e a data das seguintes é limitada ao dia 28 para cobrir meses curtos.
+
+Antes de disponibilizar cobranças reais, valide os dois fluxos no ambiente de homologação do estabelecimento: autorização, recebimento da primeira e da segunda parcelas, recusa, reentrega de notificações e cancelamento.

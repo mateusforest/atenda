@@ -5,11 +5,12 @@ import {mkdirSync} from 'node:fs';
 import {fault, transport} from '../lib/wa-transport.mjs';
 
 const {WA_AKG_URL,WA_AKG_API_KEY,WA_AKG_SESSION,WA_OWNER_EMAIL,LOCALAPPDATA}=process.env;
-if(!WA_AKG_API_KEY||!WA_AKG_SESSION||!WA_OWNER_EMAIL||!LOCALAPPDATA)throw Error('Configuração do atendimento incompleta.');
+const stateDir=process.env.ATENDA_STATE_DIR||(LOCALAPPDATA&&join(LOCALAPPDATA,'Atenda','WhatsApp-1'));
+if(!WA_AKG_API_KEY||!WA_AKG_SESSION||!WA_OWNER_EMAIL||!stateDir)throw Error('Configuração do atendimento incompleta.');
 const origin=new URL(WA_AKG_URL);
 if(origin.origin!=='http://127.0.0.1:38741')throw Error('O atendimento requer o gateway local da Atenda.');
 const session=encodeURIComponent(WA_AKG_SESSION);
-const filename=join(LOCALAPPDATA,'Atenda','WhatsApp-1','atendimento.sqlite');
+const filename=join(stateDir,'atendimento.sqlite');
 mkdirSync(dirname(filename),{recursive:true});
 const db=new DatabaseSync(filename);
 async function gateway(path,body){

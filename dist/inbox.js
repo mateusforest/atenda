@@ -290,7 +290,7 @@ class WhatsAppInbox extends HTMLElement {
       const result=await agentRequest('suggest',{jid:this.selected.jid,messageId:latest.id,profile:agentProfile(a)},signal);
       if(signal.aborted)return;
       if(this.input.value||latest.id!==this.latest?.id){output.textContent='A conversa ou o rascunho mudou. Confira antes de pedir outra sugestão.';return}
-      this.input.value=result.text;output.textContent='Sugestão pronta para revisar e enviar.';this.input.focus();
+      this.input.value=result.text;output.textContent=(result.model==='gpt-6-luna'?'Luna':'Motor local')+' · Sugestão pronta para revisar e enviar.';this.input.focus();
     }catch(e){if(!signal.aborted)output.textContent=e.message}
     finally{if(!signal.aborted){this.generating=false;this.refresh()}}
   }

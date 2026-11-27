@@ -1,4 +1,5 @@
 import {callWindows, fault, privateJid, uuid} from '../lib/wa-transport.mjs';
+import {lunaReply} from '../lib/luna.mjs';
 
 export default async function inbox(req,res) {
   res.setHeader('Cache-Control','private, no-store');
@@ -15,7 +16,14 @@ export default async function inbox(req,res) {
     });
     if(!auth.ok) throw fault([401,403].includes(auth.status)?401:503,'Não foi possível validar a conta.');
     const user=await auth.json();
-    if(!uuid.test(user.id)||!user.email_confirmed_at||user.email?.toLowerCase()!==WA_OWNER_EMAIL.toLowerCase()) throw fault(403,'Esta conta não possui este canal de WhatsApp.');
+    if(!uuid.test(user.id)||!user.email_confirmed_at)throw fault(403,'Confirme seu e-mail para acessar a Atenda.');
+    const isOwner=user.email?.toLowerCase()===WA_OWNER_EMAIL.toLowerCase();
+    if(!isOwner){
+      const b=req.method==='POST'&&(typeof req.body==='string'?JSON.parse(req.body):req.body);
+      if(b?.op!=='trial'||!process.env.OPENAI_API_KEY)throw fault(403,'Esta conta não possui este canal de WhatsApp.');
+      const {hasCurrentPayment}=await import('../lib/subscriber-access.mjs');
+      if(!await hasCurrentPayment(user.id))throw fault(403,'O teste do Luna requer uma mensalidade vigente.');
+    }
     const params=new URL(req.url,'https://atenda.local').searchParams;
     const owner={id:user.id,email:user.email.toLowerCase()};
     let command;
@@ -30,6 +38,14 @@ export default async function inbox(req,res) {
       if(['suggest','trial','voice','audio'].includes(body?.op)){
         if(body.op!=='trial'&&(!privateJid.test(body.jid)||typeof body.messageId!=='string'||!body.messageId||body.messageId.length>200))throw fault(400,'Mensagem inválida.');
         if(JSON.stringify(body).length>40000)throw fault(413,'Contexto muito longo.');
+        if(body.op==='trial'&&process.env.OPENAI_API_KEY)return json(200,await lunaReply(body.profile,body.history));
+        if(body.op==='suggest'&&process.env.OPENAI_API_KEY){
+          const history=await callWindows({op:'history',owner,jid:body.jid});
+          const last=history.messages.at(-1);
+          if(!last||last.id!==body.messageId||last.fromMe)throw fault(409,'A conversa mudou. Confira a última mensagem.');
+          if(last.voice&&!last.voice.transcript||!last.text||last.text==='[Mensagem de mídia]')throw fault(409,'A última mensagem precisa de texto ou transcrição.');
+          return json(200,await lunaReply(body.profile,history.messages.slice(-12)));
+        }
         command={op:body.op,owner,jid:body.jid,messageId:body.messageId,profile:body.profile,history:body.history,offset:body.offset};
       }else{
       if(!privateJid.test(body?.jid)||!uuid.test(body?.requestId)||typeof body?.text!=='string'||!body.text.trim()||body.text.length>4000)throw fault(400,'Informe uma resposta de até 4.000 caracteres.');
