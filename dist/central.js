@@ -351,7 +351,7 @@ if(location.hash==='#assinatura')go('billing');else render();Empresa.init();
 ;
 (()=>{
 const dock=document.querySelector('.dot-shell'), log=dock.querySelector('.dot-log'), chips=dock.querySelector('.dot-chips'), form=dock.querySelector('form'), input=form.querySelector('input'), toggle=document.querySelector('.dot-toggle');
-const shortcuts={settings:['Informações da empresa','Pagamentos'],panel:['Onde estão meus leads?','Ver documentos'],integrations:['Conectar API externa'],home:['Como está a fila?','Testar agente','Conectar WhatsApp'],chat:['Quem está esperando?','Resumo da fila'],agent:['Testar agente','Criar agente'],setup:['Configurar agente','Testar agente'],channel:['Como parear?','Resposta automática'],billing:['Qual a mensalidade?','Ver equipe'],quotes:['Ver cotações','Resumo da fila']};
+const shortcuts={settings:['Informações da empresa','Pagamentos'],panel:['Onde estão meus leads?','Cadastrar lead','Cadastrar cliente'],integrations:['Conectar API externa'],home:['Como está a fila?','Testar agente','Conectar WhatsApp'],chat:['Quem está esperando?','Resumo da fila'],agent:['Testar agente','Criar agente'],setup:['Configurar agente','Testar agente'],channel:['Como parear?','Resposta automática'],billing:['Qual a mensalidade?','Ver equipe'],quotes:['Ver cotações','Resumo da fila']};
 const fold=value=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 const currentPage=()=>page==='setup'?'Configurar agente':labels[page]||'Visão geral';
 let previous='';
@@ -396,7 +396,7 @@ function route(q){
  if(/^(sim|abrir|onde|como assim|me mostra|mostrar|como)[?!. ]*$/.test(q)&&previous)return previous;
  return 'help';
 }
-async function ask(message){const value=message.trim();if(!value)return;line(value,true);input.value='';previous=route(fold(value));try{const [text,action]=await answer(previous);line(text,false,action)}catch(error){line(error.message,false)}}
+async function ask(message){const value=message.trim();if(!value)return;line(value,true);input.value='';previous=route(fold(value));try{const [text,action]=await Empresa.dotContact(value)||await answer(previous);line(text,false,action)}catch(error){line(error.message,false)}}
 form.onsubmit=e=>{e.preventDefault();ask(input.value)};
 toggle.onclick=()=>{const open=toggle.getAttribute('aria-expanded')!=='true';toggle.setAttribute('aria-expanded',String(open));document.getElementById('dot-body').hidden=!open;document.body.classList.toggle('dot-expanded',open);toggle.querySelector('.dot-sign').textContent=open?'−':'+'};
 document.addEventListener('click', event => {

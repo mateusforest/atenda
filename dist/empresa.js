@@ -49,7 +49,7 @@ const Empresa = (() => {
   function panel(){const names=allSections();if(!names[section])section='leads';
     return title('Meu painel','Leads, clientes, documentos e o que sua empresa precisa acompanhar.')+tabs(names,section,'section')+(email?'<section class="card stack"><div class="heading"><h2>'+esc(names[section])+'</h2><div class="ws-buttons">'+btn('Nova seção','addSection')+btn('Adicionar '+(singular[section]||'registro'),'editRecord','',true)+'</div></div>'+(section==='payments'?paymentSummary():'')+'<input data-wsearch aria-label="Buscar nos registros" placeholder="Buscar nesta seção" value="'+esc(searchText)+'"><div id="ws-rows">'+recordList()+'</div></section>':guest());
   }
-  function recordForm(id){const r=state.records.find(r=>r.id===id)||{},s=r.section||section;
+  function recordForm(id,draft){const r=state.records.find(r=>r.id===id)||draft||{},s=r.section||section;
     const contact=['clients','leads'].includes(s);
     let fields=fld(s==='payments'?'Descrição do pagamento':'Nome ou título','name',r.name,'text','required')+sel('Situação','status',choices(stages[s]||['Aberto','Em andamento','Concluído']),r.status)+fld(s==='payments'?'Vencimento':'Data','date',r.date,'date');
     if(contact)fields+=fld('Telefone','contact',r.contact,'tel')+fld('E-mail','email',r.email,'email');
@@ -64,6 +64,31 @@ const Empresa = (() => {
       if(file?.size){if(file.size>2*1024*1024)throw Error('O limite é de 2 MB por arquivo.');const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=reject;reader.readAsDataURL(file)});value.upload={name:file.name,data}}
       await api('record',{...value,id,section:s});dialog.close();render();
     })}}
+  async function dotContact(message){
+    const text=message.trim().replace(/[?!.]+$/u,'').replace(/^(?:dot[, ]+|por favor[, ]+)+/iu,'').trim();
+    const command=text.replace(/^(?:quero\s+)?(?:cadastrar|cadastre|cadastra|adicionar|adicione|criar|crie)\s+/iu,'');
+    const create=command!==text && command.match(/^(?:(?:um|uma|o|a|novo|nova)\s+)*(?<kind>lead|cliente)\b[\s:\-]*(?<name>.*)$/iu);
+    const named=command!==text && command.match(/^(?<name>.+?)\s+como\s+(?<kind>lead|cliente)$/iu);
+    const draft=(create||named)?.groups;
+    const lookup=text.match(/^(?:buscar|busque|procurar|procure|consultar|consulte|ver)\s+(?:(?:o|a)\s+)?(lead|cliente)\s+(.+)$/iu);
+    const question=text.match(/^(?:(?:o|a)\s+)?(.+?)\s+(?:j[áa]\s+)?(?:est[áa]|foi)\s+(?:cadastrad[oa]|registrad[oa])(?:\s+como\s+(lead|cliente))?$/iu);
+    if(!draft&&!lookup&&!question)return null;
+    const kind=(draft?.kind||lookup?.[1]||question?.[2]||'').toLowerCase();
+    const name=(draft?.name??lookup?.[2]??question?.[1]??'').trim();
+    const target=kind==='cliente'?'clients':'leads';
+    await api();
+    const normalize=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
+    const contacts=state.records.filter(r=>['clients','leads'].includes(r.section)&&(!kind||draft||r.section===target));
+    const exact=contacts.filter(r=>name&&normalize(r.name)===normalize(name));
+    const matches=exact.length||draft?exact:contacts.filter(r=>name&&normalize(r.name).includes(normalize(name)));
+    if(matches.length===1){
+      const r=matches[0];
+      return [r.name+' consta em '+baseSections[r.section]+(r.status?' · '+r.status:'')+'.',['Abrir cadastro',()=>{section=r.section;searchText='';go('panel');recordForm(r.id)}]];
+    }
+    if(matches.length>1)return ['Encontrei '+matches.length+' cadastros para “'+name+'”. Informe o nome completo para identificar a pessoa.'];
+    if(!draft)return ['Não encontrei “'+name+'” em '+(kind?baseSections[target]:'Leads ou Clientes')+'.'];
+    return ['Confira os dados e clique em Salvar para cadastrar '+(name||'o contato')+'.',['Revisar '+kind,()=>{section=target;searchText='';go('panel');recordForm('',{name,section:target})}]];
+  }
   function addSection(){modal('Nova seção','<form class="stack" id="ws-section">'+fld('Nome da seção','name','','text','required')+submit('Criar seção')+'</form>');const f=document.getElementById('ws-section');
     f.onsubmit=e=>{e.preventDefault();progress(f,async()=>{const name=f.elements.name.value.trim();if(Object.values(allSections()).some(v=>v.toLowerCase()===name.toLowerCase()))throw Error('Escolha outro nome.');await api('section',{name});section=state.sections.at(-1).id;searchText='';dialog.close();render()})}}
   function integrations(){return title('Integrações','Conecte portais externos e escolha quais agentes podem consultar ou cadastrar informações.')+(email?'<section class="card stack pane"><div class="heading"><h2>Portais conectados</h2>'+btn('Adicionar integração','editConn','',true)+'</div>'+ (state.connections.map(c=>'<div class="ws-row"><span><b>'+esc(c.name)+'</b><small>'+(c.enabled?'Habilitada':'Pausada')+' · '+c.readers.length+' com consulta · '+c.writers.length+' com cadastro</small></span><div class="ws-buttons">'+(c.enabled&&(c.readers.length||c.writers.length)?btn('Usar','runConn',c.id):'')+btn('Configurar','editConn',c.id)+'</div></div>').join('')||'<p class="muted">Adicione o endpoint de uma API para começar.</p>')+'</section>':guest())}
@@ -128,5 +153,5 @@ const Empresa = (() => {
   });
   document.addEventListener('input',e=>{if(e.target.matches('[data-wsearch]')){searchText=e.target.value;document.getElementById('ws-rows').innerHTML=recordList()}});
   document.addEventListener('submit',e=>{const f=e.target;if(f.dataset.wform!=='profile')return;e.preventDefault();progress(f,async()=>{await api('profile',Object.fromEntries(new FormData(f)));document.querySelector('.bar strong').textContent=state.profile.company||data.workspace;f.querySelector('output').textContent='Alterações salvas.'})});
-  return {settings,selectSubscription(){settingsTab='Assinatura'},integrations,panel,agentTools,bindTrial,fact,runForm,allowed,init:reload,get company(){return state.profile.company},get companyFacts(){const p=state.profile;return email?[p.company,p.sector,p.about,p.phone&&'Telefone comercial: '+p.phone,p.website].filter(Boolean).join('\n').slice(0,2000):''},get guidelines(){return email?state.profile.guidelines:''},get privatePage(){return isPrivatePage()},get logged(){return !!email}};
+  return {settings,selectSubscription(){settingsTab='Assinatura'},integrations,panel,dotContact,agentTools,bindTrial,fact,runForm,allowed,init:reload,get company(){return state.profile.company},get companyFacts(){const p=state.profile;return email?[p.company,p.sector,p.about,p.phone&&'Telefone comercial: '+p.phone,p.website].filter(Boolean).join('\n').slice(0,2000):''},get guidelines(){return email?state.profile.guidelines:''},get privatePage(){return isPrivatePage()},get logged(){return !!email}};
 })();
