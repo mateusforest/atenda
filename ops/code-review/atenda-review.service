@@ -1,0 +1,22 @@
+[Unit]
+Description=Revisão de mudanças da Atenda
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /opt/atenda-review/review.py
+DynamicUser=yes
+StateDirectory=atenda-review
+StateDirectoryMode=0700
+Environment=GIT_TERMINAL_PROMPT=0
+Environment=GIT_CONFIG_NOSYSTEM=1
+Environment=GIT_CONFIG_GLOBAL=/dev/null
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=yes
+MemoryMax=384M
+CPUQuota=50%
+TimeoutStartSec=4min
