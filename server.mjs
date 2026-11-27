@@ -28,6 +28,7 @@ http.createServer(async(req,res)=>{
  pages.set('/whatsapp','whatsapp.html');
  for(const [route,file] of [['/admin','admin.html'],['/admin/','admin.html'],['/admin.html','admin.html'],['/admin.js','admin.js'],['/admin.css','admin.css']])pages.set(route,file);
  pages.set('/inbox.js','inbox.js');
+ pages.set('/agent-rules.mjs','agent-rules.mjs');
  pages.set('/billing.js','billing.js');
  pages.set('/portal-ui.css','portal-ui.css');
  pages.set('/whatsapp-channel.js','whatsapp-channel.js');
@@ -35,7 +36,7 @@ http.createServer(async(req,res)=>{
  const asset=localPortal?'whatsapp.html':pages.get(path);
  if(asset&&req.method==='GET'){
   const content=await readFile(new URL('./dist/'+asset,import.meta.url));
-  const type=asset.endsWith('.png')?'image/png':asset.endsWith('.css')?'text/css; charset=utf-8':asset.endsWith('.js')?'text/javascript; charset=utf-8':'text/html; charset=utf-8';
+  const type=asset.endsWith('.png')?'image/png':asset.endsWith('.css')?'text/css; charset=utf-8':/\.m?js$/.test(asset)?'text/javascript; charset=utf-8':'text/html; charset=utf-8';
   res.writeHead(200,{'Content-Type':type});return res.end(content)
  }
  if(['/api/workspace','/api/whatsapp','/api/inbox','/api/billing','/api/admin'].includes(path)){

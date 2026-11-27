@@ -31,7 +31,7 @@ function agentRequest(op,fields,signal) {
 }
 function agentProfile(agent){
   const keys=['name','goal','greeting','question','tone','pace','knowledge','handoff'];
-  return {...Object.fromEntries(keys.map(key=>[key,String(agent[key]||'').slice(0,2000)])),guidelines:Empresa.guidelines,
+  return {...Object.fromEntries(keys.map(key=>[key,String(agent[key]||'').slice(0,2000)])),guidelines:Empresa.guidelines,companyFacts:Empresa.companyFacts,
     functions:memberRoles(agent).map(r=>({name:r.label,goal:models[r.model][1],question:r.question}))};
 }
 function contactAvatar(item) {
@@ -60,6 +60,7 @@ function conversationRow(item, open) {
   const copy = document.createElement('span'), heading = document.createElement('strong'), preview = document.createElement('span');
   copy.className = 'wa-copy';
   heading.textContent = name;
+  if(item.withTeam)heading.append(' · Com a equipe');
   preview.textContent = item.preview === '[Mensagem de mídia]' ? 'Mensagem de mídia' : item.preview;
   copy.append(heading, preview);
   button.append(contactAvatar(item), copy);
@@ -122,6 +123,7 @@ class WhatsAppInbox extends HTMLElement {
       <section class="wa-history" hidden><button type="button" class="link">‹ Voltar às conversas</button>
         <h3 tabindex="-1"></h3><div class="bubbles" aria-label="Histórico" tabindex="0"></div>
         <div class="wa-toolbar wa-agent"><label class="field">Agente da sugestão<select></select></label><button type="button" class="btn light">Sugerir resposta</button></div>
+        <div data-team hidden><strong>Com a equipe</strong> · Responda abaixo ou <button class="link" type="button">retome com o agente</button>.</div>
         <form class="compose"><input aria-label="Sua resposta no WhatsApp" placeholder="Escreva uma resposta…" maxlength="4000" required autocomplete="off"><button class="btn">Enviar</button></form>
         <output role="status"></output></section>`;
     this.search = this.querySelector('[type=search]');
@@ -144,6 +146,15 @@ class WhatsAppInbox extends HTMLElement {
     for(const a of data.team.filter(a=>a.licensed&&!a.paused))this.agents.add(new Option(a.name,a.id));
     this.agents.onchange=()=>{
       if(this.selected)sessionStorage.setItem(this.agentChoiceKey(this.selected),this.agents.value);
+      this.suggest.disabled=true;this.refresh();
+    };
+    this.team=this.querySelector('[data-team]');
+    this.team.querySelector('button').onclick=async()=>{
+      const signal=this.actions.signal,button=this.team.querySelector('button');
+      if(!this.latest)return;button.disabled=true;
+      try{await agentRequest('release',{jid:this.selected.jid,messageId:this.latest.id},signal);if(!signal.aborted)await this.refresh()}
+      catch(e){if(!signal.aborted)this.pane.querySelector('output').textContent=e.message}
+      finally{button.disabled=false}
     };
     this.suggest.onclick=()=>this.suggestReply();
     this.pane.querySelector('button').onclick=()=>this.select(null);
@@ -179,6 +190,7 @@ class WhatsAppInbox extends HTMLElement {
     this.previous=null;
     this.status.textContent='Carregando…';
     if(chat){
+      this.team.hidden=true;
       const saved=sessionStorage.getItem(this.agentChoiceKey(chat));
       const options=Array.from(this.agents.options);
       this.agents.value=options.find(o=>o.value===saved)?.value||options[0]?.value||'';
@@ -211,7 +223,8 @@ class WhatsAppInbox extends HTMLElement {
     const request=this.request=new AbortController(), chat=this.selected;
     try{
       const query=chat?'?view=history&jid='+encodeURIComponent(chat.jid):'?view=chats&scope='+this.scope.value+'&page='+this.page;
-      const result=await whatsappInboxRequest(query,{signal:request.signal});
+      const agent=chat&&findMember(this.agents.value);
+      const result=agent?await agentRequest('review',{jid:chat.jid,profile:{handoff:agent.handoff}},request.signal):await whatsappInboxRequest(query,{signal:request.signal});
       if(request!==this.request||!this.isConnected)return;
       const rows=chat?result.messages:result.chats;
       if(!chat){
@@ -225,7 +238,8 @@ class WhatsAppInbox extends HTMLElement {
       if(chat) this.status.textContent=rows.length?'':'Nenhuma mensagem neste histórico.';
       if(chat){
         this.latest=rows.at(-1);
-        this.suggest.disabled=this.generating||!this.agents.value||!this.latest||this.latest.fromMe||!!(this.latest.voice&&!this.latest.voice.transcript);
+        this.team.hidden=!result.withTeam;
+        this.suggest.disabled=result.withTeam||this.generating||!this.agents.value||!this.latest||this.latest.fromMe||!!(this.latest.voice&&!this.latest.voice.transcript);
       }
       const fingerprint=JSON.stringify(rows);
       if(fingerprint!==this.previous){
@@ -298,8 +312,9 @@ class WhatsAppInbox extends HTMLElement {
     try{
       const result=await agentRequest('suggest',{jid:this.selected.jid,messageId:latest.id,profile:agentProfile(a)},signal);
       if(signal.aborted)return;
+      if(result.handoff){this.team.hidden=false;output.textContent='Esta conversa aguarda a equipe.';return}
       if(this.input.value||latest.id!==this.latest?.id){output.textContent='A conversa ou o rascunho mudou. Confira antes de pedir outra sugestão.';return}
-      this.input.value=result.text;output.textContent=(result.model==='gpt-6-luna'?'Luna':'Motor local')+' · Sugestão pronta para revisar e enviar.';this.input.focus();
+      this.input.value=result.text;output.textContent=(result.model==='roteiro'?'Abertura configurada':result.model==='gpt-6-luna'?'Luna':'Motor local')+' · Sugestão pronta para revisar e enviar.';this.input.focus();
     }catch(e){if(!signal.aborted)output.textContent=e.message}
     finally{if(!signal.aborted){this.generating=false;this.agents.disabled=false;this.refresh()}}
   }

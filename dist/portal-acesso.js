@@ -5,6 +5,7 @@
   if(!AtendaAuth.session){location.replace('/login'+location.hash);return}
   try{
     const user=await AtendaAuth.verify();
+    window.AgentRules=await import('/agent-rules.mjs');
     AtendaAuth.access().then(token=>fetch('/api/admin?action=visit',{method:'POST',cache:'no-store',headers:{Authorization:'Bearer '+token}}))
       .then(async r=>{if(!r.ok)return;const access=await r.json();if(access.admin){const link=document.createElement('a');link.className='dot-home';link.href='/admin';link.textContent='Administração';document.querySelector('.bar .account-exit').before(link)}}).catch(()=>{});
     const key='atenda.v1.'+user.id;

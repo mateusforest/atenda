@@ -1,5 +1,6 @@
 import {callWindows, fault, privateJid, uuid} from '../lib/wa-transport.mjs';
 import {lunaReply} from '../lib/luna.mjs';
+import {trialReply} from '../lib/agent-profile.mjs';
 
 export default async function inbox(req,res) {
   res.setHeader('Cache-Control','private, no-store');
@@ -35,16 +36,14 @@ export default async function inbox(req,res) {
       command={op,jid,owner,scope,page};
     } else if(req.method==='POST'){
       const body=typeof req.body==='string'?JSON.parse(req.body):req.body;
-      if(['suggest','trial','voice','audio'].includes(body?.op)){
-        if(body.op!=='trial'&&(!privateJid.test(body.jid)||typeof body.messageId!=='string'||!body.messageId||body.messageId.length>200))throw fault(400,'Mensagem inválida.');
+      if(['review','release','suggest','trial','voice','audio'].includes(body?.op)){
+        if(body.op!=='trial'&&!privateJid.test(body.jid))throw fault(400,'Conversa inválida.');
+        if(!['trial','review'].includes(body.op)&&(typeof body.messageId!=='string'||!body.messageId||body.messageId.length>200))throw fault(400,'Mensagem inválida.');
         if(JSON.stringify(body).length>40000)throw fault(413,'Contexto muito longo.');
-        if(body.op==='trial'&&process.env.OPENAI_API_KEY)return json(200,await lunaReply(body.profile,body.history));
+        if(body.op==='trial'&&process.env.OPENAI_API_KEY)return json(200,await trialReply(lunaReply,body.profile,body.history));
         if(body.op==='suggest'&&process.env.OPENAI_API_KEY){
-          const history=await callWindows({op:'history',owner,jid:body.jid});
-          const last=history.messages.at(-1);
-          if(!last||last.id!==body.messageId||last.fromMe)throw fault(409,'A conversa mudou. Confira a última mensagem.');
-          if(last.voice&&!last.voice.transcript||!last.text||last.text==='[Mensagem de mídia]')throw fault(409,'A última mensagem precisa de texto ou transcrição.');
-          return json(200,await lunaReply(body.profile,history.messages.slice(-12)));
+          const result=await callWindows({op:'suggestContext',owner,jid:body.jid,profile:body.profile,messageId:body.messageId});
+          return json(200,result.context?await lunaReply(body.profile,result.context):result);
         }
         command={op:body.op,owner,jid:body.jid,messageId:body.messageId,profile:body.profile,history:body.history,offset:body.offset};
       }else{

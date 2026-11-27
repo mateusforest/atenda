@@ -3,12 +3,16 @@ import {fault,privateJid,uuid} from '../lib/wa-transport.mjs';
 import {contactPhotos} from './contact-photos.mjs';
 import {voiceService} from './voice.mjs';
 import {agentEngine} from './agents.mjs';
+import {trialReply} from '../lib/agent-profile.mjs';
+import {openingForGreeting,requestsTeam} from '../dist/agent-rules.mjs';
 
 export function receiver({db,gateway,session,sessionId,ownerEmail,official,draft=agentEngine(),voice=voiceService(db,sessionId)}){
   const photo=contactPhotos(gateway,session);
   db.exec(`pragma busy_timeout=3000;
   create table if not exists owner(session text primary key,user_id text not null);
-  create table if not exists sends(id text primary key, digest text not null, key_id text);`);
+  create table if not exists sends(id text primary key, digest text not null, key_id text);
+  create table if not exists team_handoffs(session text,jid text,message text,active integer,primary key(session,jid));`);
+  const teamState=jid=>db.prepare('select message,active from team_handoffs where session=? and jid=?').get(sessionId,jid);
   function verifyOwner(owner){
     if(!uuid.test(owner?.id)||owner.email!==ownerEmail.toLowerCase())throw fault(403,'Conta sem acesso a este canal.');
     db.prepare('insert or ignore into owner values (?,?)').run(session,owner.id);
@@ -27,8 +31,7 @@ export function receiver({db,gateway,session,sessionId,ownerEmail,official,draft
     verifyOwner(cmd.owner);
     if(cmd.op==='official'&&official)return official.command(cmd.action);
     if(cmd.op==='trial') {
-      if(!Array.isArray(cmd.history)||!cmd.history.length||cmd.history.length>12||cmd.history.some(m=>typeof m?.text!=='string'||typeof m.fromMe!=='boolean')||cmd.history.at(-1).fromMe)throw fault(400,'Teste inválido.');
-      return draft(cmd.profile,cmd.history);
+      return trialReply(draft,cmd.profile,cmd.history);
     }
     if(cmd.op==='chats'){
       const scope=cmd.scope??'all', page=cmd.page??1;
@@ -36,13 +39,13 @@ export function receiver({db,gateway,session,sessionId,ownerEmail,official,draft
       const result=await gateway('chat/'+session+'?inbox='+scope+'&page='+page);
       const chats=result.chats.filter(r=>privateJid.test(r.jid)).map(r=>({
         jid:r.jid,name:excerpt(r.name||r.notify||r.jid.split('@')[0],120),photo:photo(r),
-        preview:excerpt(r.preview||'[Mensagem de mídia]',160),time:r.time,fromMe:r.fromMe
+        preview:excerpt(r.preview||'[Mensagem de mídia]',160),time:r.time,fromMe:r.fromMe,withTeam:!!teamState(r.jid)?.active
       }));
       return {chats,counts:result.counts,more:result.more};
     }
     if(!privateJid.test(cmd.jid))throw fault(400,'Contato inválido.');
     const contact=encodeURIComponent(cmd.jid);
-    if(['history','suggest','voice','audio'].includes(cmd.op)){
+    if(['history','review','suggest','suggestContext','release','voice','audio'].includes(cmd.op)){
       const rows=await gateway('chat/'+session+'/'+contact);
       if(cmd.op==='voice'||cmd.op==='audio'){
         const row=rows.find(m=>m.keyId===cmd.messageId && m.type==='AUDIO');
@@ -50,14 +53,36 @@ export function receiver({db,gateway,session,sessionId,ownerEmail,official,draft
         return cmd.op==='audio'?voice.chunk(row,cmd.offset):voice.start(cmd.jid,row,true);
       }
       const latest=rows.at(-1);
+      if(cmd.op==='release'){
+        if(latest?.keyId!==cmd.messageId)throw fault(409,'A conversa mudou. Confira antes de retomar.');
+        db.prepare('update team_handoffs set active=0,message=? where session=? and jid=? and active=1').run(cmd.messageId,sessionId,cmd.jid);
+        return {withTeam:false};
+      }
       if(latest?.type==='AUDIO'&&!latest.fromMe){
         try{voice.start(cmd.jid,latest)}catch(e){if(e.status!==429)throw e}
       }
-      if(cmd.op==='suggest'){
-        if(!latest || latest.fromMe || latest.keyId!==cmd.messageId)throw fault(409,'A conversa mudou. Confira a última mensagem.');
+      const suggesting=cmd.op==='suggest'||cmd.op==='suggestContext';
+      if(suggesting&&(!latest||latest.fromMe||latest.keyId!==cmd.messageId))throw fault(409,'A conversa mudou. Confira a última mensagem.');
+      let team=teamState(cmd.jid);
+      if((cmd.op==='review'||suggesting)&&!team?.active){
+        for(let i=rows.length-1;i>=0;i--){
+          const row=rows[i];
+          if(row.fromMe||row.keyId===team?.message)break;
+          const incoming=row.type==='AUDIO'?voice.state(cmd.jid,row).transcript:row.content;
+          if(!requestsTeam(incoming,cmd.profile?.handoff))continue;
+          db.prepare('insert or replace into team_handoffs values(?,?,?,1)').run(sessionId,cmd.jid,row.keyId);
+          team=teamState(cmd.jid);
+          break;
+        }
+      }
+      if(suggesting){
+        if(team?.active)return {handoff:true};
         if(latest.type==='AUDIO'&&!voice.state(cmd.jid,latest).transcript)throw fault(409,'Aguarde a transcrição ou confira o áudio.');
         if(latest.type!=='AUDIO'&&!latest.content?.trim())throw fault(409,'A última mensagem não contém texto para o agente.');
-        return draft(cmd.profile,rows.slice(-12).map(row=>({fromMe:row.fromMe,text:(row.type==='AUDIO'?voice.state(cmd.jid,row).transcript:row.content)||'[Mídia]'})));
+        const context=rows.slice(-12).map(row=>({fromMe:row.fromMe,text:excerpt((row.type==='AUDIO'?voice.state(cmd.jid,row).transcript:row.content)||'[Mídia]',1600)}));
+        const greeting=!rows.some(row=>row.fromMe)&&openingForGreeting(cmd.profile,context);
+        if(greeting)return {text:greeting,model:'roteiro'};
+        return cmd.op==='suggestContext'?{context}:draft(cmd.profile,context);
       }
       // Mantém a resposta dentro do limite de um broadcast mesmo com textos extensos.
       let size=0;const messages=[];
@@ -70,7 +95,7 @@ export function receiver({db,gateway,session,sessionId,ownerEmail,official,draft
         size+=Buffer.byteLength(JSON.stringify(message));if(size>115000)break;
         messages.unshift(message);
       }
-      return {messages,photo:photo({jid:cmd.jid})};
+      return {messages,withTeam:!!team?.active,photo:photo({jid:cmd.jid})};
     }
     if(cmd.op!=='send'||!uuid.test(cmd.requestId)||typeof cmd.text!=='string'||!cmd.text.trim()||cmd.text.length>4000)throw fault(400,'Resposta inválida.');
     const digest=createHash('sha256').update(JSON.stringify([session,cmd.owner.id,cmd.jid,cmd.text])).digest('hex');

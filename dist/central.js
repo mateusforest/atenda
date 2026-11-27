@@ -49,6 +49,22 @@ const models=[
  ['Pós-venda','Acompanha a experiência após a compra.','Como foi sua experiência?','O que poderíamos melhorar?'],
  ['Personalizado','Combine funções em um agente que acompanha toda a conversa.','Como posso ajudar?','O que você gostaria de acrescentar?']
 ];
+const defaultGoals=[
+ 'Identificar o motivo do contato, responder à dúvida inicial e orientar o próximo passo.',
+ 'Entender as prioridades do cliente e recomendar uma opção com base nas informações disponíveis.',
+ 'Entender o que o cliente deseja comprar, qualificar a oportunidade e combinar o próximo passo de vendas.',
+ 'Identificar o problema, orientar a solução com as informações da empresa e encaminhar os casos que exigem a equipe.',
+ 'Acompanhar a experiência após a compra, esclarecer dúvidas e registrar o que precisa de acompanhamento.',
+ 'Identificar a necessidade atual e usar as funções selecionadas para acompanhar o cliente na mesma conversa.'
+];
+const defaultQuestions=[
+ ['Que detalhe a equipe precisa saber para atender seu pedido?','Você tem algum prazo para resolver isso?'],
+ ['Que características são mais importantes para você?','Para qual situação você pretende usar a solução?'],
+ ['Para quando você precisa da solução?','Qual faixa de investimento você tem em mente?'],
+ ['Quando o problema começou?','O que você já tentou fazer?'],
+ ['O que atendeu às suas expectativas?','Há algo que você gostaria que a equipe acompanhasse?'],
+ ['Qual resultado você espera desse atendimento?','Há algum detalhe importante para o próximo passo?']
+];
 const serviceRoles=[
  {key:'atendimento',label:'Atendimento',model:0},
  {key:'suporte',label:'Suporte',model:3},
@@ -60,7 +76,7 @@ const customModel=models.findIndex(([name])=>name==='Personalizado');
 function memberRoles(agent){
  if(agent.model!==customModel)return [];
  return serviceRoles.filter(role=>Object.hasOwn(agent.functions||{},role.key)).map(role=>({
-   ...role,question:agent.functions[role.key]||models[role.model][3]
+   ...role,question:agent.functions[role.key]||defaultQuestions[role.model][0]
  }));
 }
 function roleEditor(agent){
@@ -68,7 +84,7 @@ function roleEditor(agent){
  const choices=serviceRoles.map(role=>{
    const saved=current.find(r=>r.key===role.key);
    return '<div class="member-function"><label><input type="checkbox" name="role" value="'+role.key+'" '+(saved?'checked':'')+'> '+role.label+'</label>'+
-    '<label class="field" '+(saved?'':'hidden')+'>Pergunta inicial de '+role.label.toLowerCase()+'<input name="role-'+role.key+'" maxlength="240" value="'+esc(saved?.question||models[role.model][3])+'"></label></div>';
+    '<label class="field" '+(saved?'':'hidden')+'>Pergunta inicial de '+role.label.toLowerCase()+'<input name="role-'+role.key+'" maxlength="240" value="'+esc(saved?.question||defaultQuestions[role.model][0])+'"></label></div>';
  }).join('');
  return '<fieldset class="member-functions"><legend>Funções deste agente</legend><p class="muted">Escolha as funções que ele pode assumir na mesma conversa. Todas contam como um só agente no plano.</p>'+choices+'</fieldset>';
 }
@@ -76,11 +92,11 @@ const money=v=>'R$ '+Number(v).toLocaleString('pt-BR');
 const oldWorkspace=Boolean(localStorage.getItem(localDataKey));
 function makeAgent(model,first=false){
  const m=models[model];
- return {id:crypto.randomUUID(),model,name:m[0],goal:m[1],greeting:m[2],question:m[3],tone:'Humanizado',pace:'Direto',knowledge:'',handoff:'',licensed:first,paused:false};
+ return {id:crypto.randomUUID(),model,name:m[0],goal:defaultGoals[model],greeting:m[2],question:defaultQuestions[model].join('\n'),tone:'Humanizado',pace:'Direto',knowledge:'',handoff:'',licensed:first,paused:false};
 }
 if(!data.team){
  const base=makeAgent(0,true);
- if(oldWorkspace){Object.assign(base,{name:data.name,greeting:data.greeting,paused:!data.enabled,legacy:true})}
+ if(oldWorkspace){Object.assign(base,{name:data.name,greeting:data.greeting,question:models[0][3],paused:!data.enabled,legacy:true})}
  else{data.threads=[]}
  data.team=[base];
  if(oldWorkspace)for(const a of catalog){const state=data.extras[a.id];if(state&&(state.owned||state.requested)){data.team.push({...makeAgent(5),name:a.name,goal:a.description,greeting:a.welcome,question:a.questions.join('\n'),paused:!state.active})}}
@@ -99,44 +115,62 @@ function findMember(id){return data.team.find(a=>a.id===id)}
 function testAgentAI(id){
  const a=findMember(id),history=[];
  modal('Testar IA · '+a.name,'<div class="bubbles" aria-live="polite"></div><form class="compose"><input aria-label="Mensagem de teste para a IA" maxlength="1500" required placeholder="Escreva como cliente"><button class="btn">Testar resposta</button></form><output role="status"></output>');
+ let withTeam=false;
  const form=dc.querySelector('form'), messages=dc.querySelector('.bubbles'), output=dc.querySelector('output');
  function add(fromMe,text){
    history.push({fromMe,text});
    const line=document.createElement('div');line.className='bubble '+(fromMe?'out':'');line.textContent=text;messages.append(line);
  }
- add(true,a.greeting);
+ add(true,AgentRules.opening(a));
  form.onsubmit=async e=>{
    e.preventDefault();const input=form.querySelector('input'),button=form.querySelector('button'),question=input.value.trim();
-   if(!question||button.disabled)return;
+   if(!question||button.disabled||withTeam)return;
    button.disabled=true;input.disabled=true;output.textContent='Consultando o agente…';
    try{
      const result=await agentRequest('trial',{profile:agentProfile(a),history:[...history,{fromMe:false,text:question}].slice(-12)});
      if(!form.isConnected)return;
-     add(false,question);add(true,result.text);input.value='';output.textContent=result.model==='gpt-6-luna'?'Resposta do Luna':'Motor local · Luna aguarda configuração';messages.scrollTop=messages.scrollHeight;
+     add(false,question);add(true,result.text);input.value='';withTeam=!!result.handoff;
+     output.textContent=withTeam?'Com a equipe · teste encerrado.':result.model==='gpt-6-luna'?'Resposta do Luna':'Resposta do motor local';messages.scrollTop=messages.scrollHeight;
    }catch(e){output.textContent=e.message}
-   finally{input.disabled=false;button.disabled=false;if(form.isConnected)input.focus()}
+   finally{input.disabled=withTeam;button.disabled=withTeam;if(form.isConnected&&!withTeam)input.focus()}
  };
 }
 function teamPage(){
  return '<div class="heading"><div>'+title('Minha equipe','Os agentes compartilham o WhatsApp conectado à empresa. Em Conversas, escolha quem prepara a sugestão e revise antes de enviar.')+'</div>'+action('Adicionar agente','chooseModel()','')+'</div><div class="catalog pane">'+data.team.map(a=>'<article class="special"><div class="row"><span class="tile">'+icon('agent')+'</span><span class="tag '+(a.licensed&&!a.paused?'bot':'')+'">'+(a.licensed?(a.paused?'Pausado':'Ativo em teste'):'Rascunho')+'</span></div><small>'+models[a.model][0]+'</small><h2>'+esc(a.name)+'</h2><p>'+esc(a.goal)+'</p>'+(memberRoles(a).length?'<p class="member-role-summary">'+memberRoles(a).map(r=>r.label).join(' · ')+'</p>':'')+'<div class="actions">'+action('Configurar',cmd('configure',a.id))+action('Testar roteiro',cmd('tryMember',a.id))+action('Testar IA',cmd('testAgentAI',a.id))+(a.licensed?action(a.paused?'Retomar':'Pausar',cmd('toggleMember',a.id)):action('Ativar',cmd('activateDialog',a.id),''))+'</div></article>').join('')+'</div>';
 }
 function chooseModel(){modal('Adicionar agente','<div class="options">'+models.map((m,i)=>'<button class="option" onclick="newDraft('+i+')"><b>'+m[0]+'</b><small>'+m[1]+'</small></button>').join('')+'</div>')}
-function newDraft(i){const a=makeAgent(i);if(i===customModel)a.functions=Object.fromEntries(serviceRoles.slice(0,3).map(r=>[r.key,models[r.model][3]]));data.team.push(a);save();dialog.close();go('agent');configure(a.id)}
+function newDraft(i){const a=makeAgent(i);if(i===customModel)a.functions=Object.fromEntries(serviceRoles.slice(0,3).map(r=>[r.key,defaultQuestions[r.model][0]]));data.team.push(a);save();dialog.close();go('agent');configure(a.id)}
 function field(label,key,value,area=false){return '<label class="field">'+label+(area?'<textarea name="'+key+'" maxlength="2000">'+esc(value)+'</textarea>':'<input name="'+key+'" value="'+esc(value)+'" maxlength="240" required>')+'</label>'}
 function select(label,key,values,current){return '<label class="field">'+label+'<select name="'+key+'" aria-label="'+esc(label)+'">'+values.map(v=>'<option '+(v===current?'selected':'')+'>'+v+'</option>').join('')+'</select></label>'}
-function phrasing(tone,pace,line){const prefix={Humanizado:'Estou aqui para ajudar. ',Profissional:'Olá. ',Firme:'Vamos ao ponto. '};return prefix[tone]+(pace==='Calmo'?'Vamos por partes. ':'')+line}
 function configure(id){
  const a=findMember(id);
  const modelChoice=a.model===customModel?'<div class="field">Modelo <strong>Personalizado</strong></div>':
    select('Modelo','model',[models[a.model][0],models[customModel][0]],models[a.model][0]);
  const modelSettings='<div data-model-settings '+(a.model===customModel?'':'hidden')+'>'+ (a.model===customModel?roleEditor(a):'')+'</div>';
- modal('Configurar agente','<form id="memberForm" class="stack">'+modelChoice+field('Nome','name',a.name)+field('Objetivo','goal',a.goal)+modelSettings+field('Abertura da conversa','greeting',a.greeting)+field('Perguntas seguintes · uma por linha','question',a.question,true)+select('Tom de voz','tone',['Humanizado','Profissional','Firme'],a.tone)+select('Ritmo','pace',['Direto','Calmo'],a.pace)+'<output class="preview" id="sample"></output>'+field('Informações da empresa para o atendimento','knowledge',a.knowledge,true)+field('Encaminhar para a equipe ao mencionar · separe por vírgulas','handoff',a.handoff,true)+'<button class="btn">Salvar configuração</button></form>');
- const form=document.querySelector('#memberForm');const sample=()=>document.querySelector('#sample').textContent=phrasing(form.elements.tone.value,form.elements.pace.value,form.elements.greeting.value);sample();form.oninput=sample;
+ modal('Configurar agente','<form id="memberForm" class="stack">'+modelChoice+
+   field('Nome do agente no portal','name',a.name)+'<small>O WhatsApp usa o perfil do número conectado. Para apresentar o agente, inclua {nome} na abertura.</small>'+
+   field('Objetivo do agente','goal',a.goal)+'<button type="button" data-goal class="link">Usar objetivo sugerido do modelo</button>'+modelSettings+
+   field('Abertura da conversa','greeting',a.greeting)+'<output class="preview" id="sample" aria-label="Prévia da abertura"></output>'+
+   field('Perguntas seguintes · uma por linha','question',a.question,true)+'<small>No roteiro, o agente faz uma pergunta por vez na ordem escrita. A IA usa as que ainda fazem sentido para o pedido.</small>'+
+   select('Tom de voz','tone',['Humanizado','Profissional','Firme'],a.tone)+select('Ritmo','pace',['Direto','Calmo'],a.pace)+'<small data-style></small>'+
+   field('Informações da empresa para o cliente','knowledge',a.knowledge,true)+
+   field('Encaminhar para a equipe ao mencionar · separe por vírgulas','handoff',a.handoff,true)+'<small>Com a conversa aberta, o agente procura esses termos nas mensagens que aguardam resposta. Se encontrar um deles, o atendimento fica com a equipe.</small><button class="btn">Salvar configuração</button></form>');
+ const form=document.querySelector('#memberForm');
+ const sample=()=>{
+   form.querySelector('#sample').textContent=AgentRules.opening({name:form.elements.name.value,greeting:form.elements.greeting.value});
+   form.querySelector('[data-style]').textContent=AgentRules.toneGuide[form.elements.tone.value]+' '+AgentRules.paceGuide[form.elements.pace.value];
+ };
+ sample();form.oninput=sample;
  const modelInput=form.elements.namedItem('model');
  const isCustom=()=>a.model===customModel||modelInput?.value===models[customModel][0];
+ form.querySelector('[data-goal]').onclick=()=>{form.elements.goal.value=defaultGoals[isCustom()?customModel:a.model]};
  if(modelInput){
+   let previous=a.model;
    const settings=form.querySelector('[data-model-settings]');
    modelInput.onchange=()=>{
+     const next=isCustom()?customModel:a.model;
+     if([models[previous][1],defaultGoals[previous]].includes(form.elements.goal.value))form.elements.goal.value=defaultGoals[next];
+     previous=next;
      if(isCustom()&&!settings.firstElementChild){
        const role=serviceRoles.find(r=>r.model===a.model);
        settings.innerHTML=roleEditor({...a,model:customModel,functions:{[role.key]:a.question.split('\n')[0].slice(0,240)}});
@@ -167,12 +201,13 @@ function tryMember(id,roleKey){
    }
    return;
  }
- specialist={name:a.name,questions:a.question.split('\n').map(x=>x.trim()).filter(Boolean)};
- trial={id:Math.max(0,...data.threads.map(t=>t.id))+1,name:'Contato de teste',status:1,agentName:a.name,messages:[[1,phrasing(a.tone,a.pace,a.greeting)]]};step=0;
- function draw(){Empresa.bindTrial(draw);modal(a.name,(Empresa.guidelines?'<details><summary>Orientações internas</summary><p>'+esc(Empresa.guidelines)+'</p></details>':'')+Empresa.agentTools(a)+bubbles(trial)+'<form id="trialForm" class="compose"><input name="message" aria-label="Resposta de teste" maxlength="500" required><button class="btn">Enviar</button></form>');document.querySelector('#trialForm').onsubmit=e=>{e.preventDefault();const msg=e.target.elements.message.value.trim();if(!msg)return;trial.messages.push([0,msg]);const words=['humano','atendente humano',...a.handoff.toLowerCase().split(',').map(x=>x.trim()).filter(Boolean)];const handoff=words.some(w=>msg.toLowerCase().includes(w));
+ specialist={name:a.name,questions:AgentRules.questions(a.question)};
+ trial={id:Math.max(0,...data.threads.map(t=>t.id))+1,name:'Contato de teste',status:1,agentName:a.name,messages:[[1,AgentRules.opening(a)]]};step=0;
+ function draw(){Empresa.bindTrial(draw);modal(a.name,(Empresa.guidelines?'<details><summary>Orientações internas</summary><p>'+esc(Empresa.guidelines)+'</p></details>':'')+Empresa.agentTools(a)+bubbles(trial)+'<form id="trialForm" class="compose"><input name="message" aria-label="Resposta de teste" maxlength="500" required><button class="btn">Enviar</button></form>');document.querySelector('#trialForm').onsubmit=e=>{e.preventDefault();const msg=e.target.elements.message.value.trim();if(!msg)return;trial.messages.push([0,msg]);const handoff=AgentRules.requestsTeam(msg,a.handoff);
  if(!handoff&&Empresa.allowed(a.id).length&&/^(buscar|consultar|cadastrar)\b/i.test(msg)){Empresa.runForm('',a.id,msg.replace(/^\S+\s*/,''),draw,/^cadastrar/i.test(msg)?'write':'read');return}
  const companyAnswer=Empresa.fact(msg);if(!handoff&&companyAnswer){trial.messages.push([1,companyAnswer]);draw();return}
- if(!handoff&&a.knowledge&&/empresa|serviços|produtos|horário/i.test(msg)){trial.messages.push([1,a.knowledge]);draw();return}
+ const detail=AgentRules.relevantFact(a.knowledge,msg);
+ if(!handoff&&detail){trial.messages.push([1,detail]);draw();return}
  if(!handoff&&step<specialist.questions.length){trial.messages.push([1,specialist.questions[step++]]);draw();return}
  trial.messages.push([1,'Vou encaminhar seu atendimento para a equipe.']);trial.status=0;if(a.legacy){trial.trip=trial.messages.filter(m=>!m[0]).map(m=>m[1]).slice(0,5);trial.stage=0}
  data.threads.unshift(trial);save();inbox(0);openThread(trial.id)}}

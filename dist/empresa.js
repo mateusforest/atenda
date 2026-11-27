@@ -127,5 +127,5 @@ const Empresa = (() => {
   });
   document.addEventListener('input',e=>{if(e.target.matches('[data-wsearch]')){searchText=e.target.value;document.getElementById('ws-rows').innerHTML=recordList()}});
   document.addEventListener('submit',e=>{const f=e.target;if(f.dataset.wform!=='profile')return;e.preventDefault();progress(f,async()=>{await api('profile',Object.fromEntries(new FormData(f)));document.querySelector('.bar strong').textContent=state.profile.company||data.workspace;f.querySelector('output').textContent='Alterações salvas.'})});
-  return {settings,selectSubscription(){settingsTab='Assinatura'},integrations,panel,agentTools,bindTrial,fact,runForm,allowed,init:reload,get company(){return state.profile.company},get guidelines(){return email?state.profile.guidelines:''},get privatePage(){return isPrivatePage()},get logged(){return !!email}};
+  return {settings,selectSubscription(){settingsTab='Assinatura'},integrations,panel,agentTools,bindTrial,fact,runForm,allowed,init:reload,get company(){return state.profile.company},get companyFacts(){const p=state.profile;return email?[p.company,p.sector,p.about,p.phone&&'Telefone comercial: '+p.phone,p.website].filter(Boolean).join('\n').slice(0,2000):''},get guidelines(){return email?state.profile.guidelines:''},get privatePage(){return isPrivatePage()},get logged(){return !!email}};
 })();
