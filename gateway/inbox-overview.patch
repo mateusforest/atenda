@@ -1,0 +1,40 @@
+--- a/src/app/api/chat/[sessionId]/route.ts
++++ b/src/app/api/chat/[sessionId]/route.ts
+@@ -31,7 +31,36 @@
+             return NextResponse.json({ status: false, message: "Session not found", error: 'Session not found' }, { status: 404 });
+         }
+ 
+-        const dbSessionId = session.id;
++        const scope = request.nextUrl.searchParams.get("inbox");
++        if (scope !== null) {
++            if (!["all","waiting","answered"].includes(scope)) return NextResponse.json({status:false}, {status:400});
++            const page = Number(request.nextUrl.searchParams.get("page") || "1");
++            if (!Number.isSafeInteger(page) || page < 1 || page > 100000) return NextResponse.json({status:false}, {status:400});
++            const wanted = scope === "all" ? -1 : Number(scope === "answered");
++            const rows = await prisma.$queryRaw<Array<{
++                jid:string; name:string|null; notify:string|null; profilePic:string|null; preview:string|null;
++                time:Date; fromMe:boolean|number|bigint; total:bigint; answered:bigint;
++            }>>`
++                WITH ranked AS (
++                    SELECT remoteJid, content, timestamp, fromMe,
++                        ROW_NUMBER() OVER (PARTITION BY remoteJid ORDER BY timestamp DESC, id DESC) AS positionInChat
++                    FROM Message
++                    WHERE sessionId=${session.id} AND remoteJid REGEXP '^[0-9]{1,24}@(s[.]whatsapp[.]net|lid)$'
++                        AND (type <> 'TEXT' OR CHAR_LENGTH(TRIM(COALESCE(content,''))) > 0)
++                ), latest AS (
++                    SELECT *, COUNT(*) OVER () AS total, SUM(fromMe) OVER () AS answered
++                    FROM ranked WHERE positionInChat=1
++                )
++                SELECT l.remoteJid AS jid,c.name,c.notify,c.profilePic,LEFT(l.content,161) AS preview,
++                       l.timestamp AS time,l.fromMe,l.total,l.answered
++                FROM latest l LEFT JOIN Contact c ON c.sessionId=${session.id} AND c.jid=l.remoteJid
++                WHERE ${wanted}=-1 OR l.fromMe=${wanted}
++                ORDER BY l.timestamp DESC,l.remoteJid LIMIT 51 OFFSET ${(page-1)*50}
++            `;
++            const total = Number(rows[0]?.total || 0), answered = Number(rows[0]?.answered || 0);
++            const chats = rows.slice(0,50).map(({total,answered,fromMe,...row})=>({...row,fromMe:Boolean(Number(fromMe))}));
++            return NextResponse.json({status:true,data:{chats,more:rows.length>50,counts:{total,answered,waiting:total-answered}}});
++        }
+ 
+         // Fetch chats using the new ChatService
+         const chatList = await ChatService.getChatsList(session.id);

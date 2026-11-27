@@ -22,7 +22,9 @@ export default async function inbox(req,res) {
     if(req.method==='GET'){
       const op=params.get('view')||'chats', jid=params.get('jid');
       if(!['status','chats','history'].includes(op)||op==='history'&&!privateJid.test(jid))throw fault(400,'Conversa inválida.');
-      command={op,jid,owner};
+      const scope=params.get('scope')||'all', page=Number(params.get('page')||1);
+      if(!['all','waiting','answered'].includes(scope)||!Number.isSafeInteger(page)||page<1||page>100000)throw fault(400,'Filtro de conversas inválido.');
+      command={op,jid,owner,scope,page};
     } else if(req.method==='POST'){
       const body=typeof req.body==='string'?JSON.parse(req.body):req.body;
       if(!privateJid.test(body?.jid)||!uuid.test(body?.requestId)||typeof body?.text!=='string'||!body.text.trim()||body.text.length>4000)throw fault(400,'Informe uma resposta de até 4.000 caracteres.');

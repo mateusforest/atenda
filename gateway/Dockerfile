@@ -5,8 +5,8 @@ RUN git init /src && git -C /src fetch --depth=1 https://github.com/mrifqidaffaa
 
 # Accept both the repository root and gateway/ as Docker build contexts.
 RUN --mount=type=bind,target=/context cd /src && \
-    if test -f /context/gateway/history-policy.patch; then git apply /context/gateway/history-policy.patch; \
-    else git apply /context/history-policy.patch; fi
+    patches=/context && if test -d /context/gateway; then patches=/context/gateway; fi && \
+    git apply "$patches/history-policy.patch" && git apply "$patches/inbox-overview.patch"
 
 FROM node:26-alpine AS builder
 RUN apk add --no-cache openssl ca-certificates

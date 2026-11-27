@@ -9,7 +9,8 @@ test('somente a conta vinculada lê mensagens e uma tentativa gera um único env
   const owner={id:randomUUID(),email:'owner@example.test'};
   const sent=[];
   const gateway=async(path,body)=>{
-    if(path==='chat/test')return [{jid,name:'Contato',lastMessage:{content:'Olá'}},{jid:'status@broadcast'}];
+    if(path==='chat/test?inbox=all&page=1')return {counts:{total:1,waiting:1,answered:0},more:false,chats:[{jid,name:'Contato',preview:'Olá',fromMe:false},{jid:'status@broadcast'}]};
+    if(path.endsWith('/profile-picture'))return {profilePicUrl:'https://pps.whatsapp.net/example.jpg'};
     if(path==='chat/test/'+encodeURIComponent(jid))return [{keyId:'one',fromMe:false,content:'Olá'}];
     assert.equal(path,'messages/test/'+encodeURIComponent(jid)+'/send');
     sent.push(body.message.text);
@@ -17,7 +18,10 @@ test('somente a conta vinculada lê mensagens e uma tentativa gera um único env
   };
   const run=receiver({db,gateway,session:'test',sessionId:'test',ownerEmail:owner.email});
   await assert.rejects(run({op:'chats',owner:{...owner,email:'wrong@example.test'}}),{status:403});
-  assert.equal((await run({op:'chats',owner})).chats.length,1);
+  const inbox=await run({op:'chats',owner});
+  assert.equal(inbox.chats.length,1);
+  assert.equal(inbox.counts.waiting,1);
+  assert.equal((await run({op:'chats',owner})).chats[0].photo,'https://pps.whatsapp.net/example.jpg');
   await assert.rejects(run({op:'chats',owner:{...owner,id:randomUUID()}}),{status:403});
   assert.equal((await run({op:'history',owner,jid})).messages[0].text,'Olá');
   const send={op:'send',owner,jid,requestId:randomUUID(),text:'Resposta'};

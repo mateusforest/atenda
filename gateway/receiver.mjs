@@ -1,7 +1,9 @@
 import {createHash} from 'node:crypto';
 import {fault,privateJid,uuid} from '../lib/wa-transport.mjs';
+import {contactPhotos} from './contact-photos.mjs';
 
 export function receiver({db,gateway,session,sessionId,ownerEmail}){
+  const photo=contactPhotos(gateway,session);
   db.exec(`pragma busy_timeout=3000;
   create table if not exists owner(session text primary key,user_id text not null);
   create table if not exists sends(id text primary key, digest text not null, key_id text);`);
@@ -22,9 +24,14 @@ export function receiver({db,gateway,session,sessionId,ownerEmail}){
     }
     verifyOwner(cmd.owner);
     if(cmd.op==='chats'){
-      const rows=await gateway('chat/'+session);
-      return {chats:rows.filter(r=>privateJid.test(r.jid)).map(r=>({jid:r.jid,name:excerpt(r.name||r.notify||r.jid.split('@')[0],120),
-        preview:excerpt(r.lastMessage?.content||'[Mensagem de mídia]',160),time:r.lastMessage?.timestamp}))};
+      const scope=cmd.scope??'all', page=cmd.page??1;
+      if(!['all','waiting','answered'].includes(scope)||!Number.isSafeInteger(page)||page<1||page>100000)throw fault(400,'Filtro de conversas inválido.');
+      const result=await gateway('chat/'+session+'?inbox='+scope+'&page='+page);
+      const chats=result.chats.filter(r=>privateJid.test(r.jid)).map(r=>({
+        jid:r.jid,name:excerpt(r.name||r.notify||r.jid.split('@')[0],120),photo:photo(r),
+        preview:excerpt(r.preview||'[Mensagem de mídia]',160),time:r.time,fromMe:r.fromMe
+      }));
+      return {chats,counts:result.counts,more:result.more};
     }
     if(!privateJid.test(cmd.jid))throw fault(400,'Contato inválido.');
     const contact=encodeURIComponent(cmd.jid);
@@ -37,7 +44,7 @@ export function receiver({db,gateway,session,sessionId,ownerEmail}){
         size+=Buffer.byteLength(JSON.stringify(message));if(size>115000)break;
         messages.unshift(message);
       }
-      return {messages};
+      return {messages,photo:photo({jid:cmd.jid})};
     }
     if(cmd.op!=='send'||!uuid.test(cmd.requestId)||typeof cmd.text!=='string'||!cmd.text.trim()||cmd.text.length>4000)throw fault(400,'Resposta inválida.');
     const digest=createHash('sha256').update(JSON.stringify([session,cmd.owner.id,cmd.jid,cmd.text])).digest('hex');

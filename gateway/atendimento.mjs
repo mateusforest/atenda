@@ -19,7 +19,7 @@ async function gateway(path,body){
   if(!res.ok)throw fault(502,'O WA-AKG respondeu HTTP '+res.status+'.');
   const payload=await res.json();
   if(payload.status===false)throw fault(502,'O WA-AKG recusou a operação.');
-  return payload.data;
+  return payload.data ?? payload;
 }
 const execute=receiver({db,gateway,session,sessionId:WA_AKG_SESSION,ownerEmail:WA_OWNER_EMAIL});
 
