@@ -21,6 +21,51 @@
   if(signup){document.getElementById('repeat').hidden=false;document.getElementById('hint').hidden=false;pass.minLength=8;pass.autocomplete='new-password';confirm.disabled=false;confirm.required=true;document.getElementById('prompt').textContent='Já tem uma conta?';switchLink.href='/login';switchLink.textContent='Entrar';send.textContent='Criar conta'}
   if(next==='checkout')switchLink.search='?next=checkout';
   const fragment=new URLSearchParams(location.hash.slice(1));
+  const recoveryToken=fragment.get('type')==='recovery'&&fragment.get('access_token');
+  const forgot=!signup&&new URLSearchParams(location.search).get('acao')==='recuperar';
+  if(recoveryToken||forgot){
+    history.replaceState(null,'',location.pathname+'?acao=recuperar');
+    const email=form.elements.email;
+    const title=recoveryToken?'Criar nova senha':'Recuperar senha';
+    document.title=title+' · Atenda';document.getElementById('heading').textContent=title;
+    document.getElementById('prompt').textContent='Lembrou sua senha?';
+    switchLink.textContent='Entrar';switchLink.href='/login';
+    pass.disabled=!recoveryToken;pass.closest('label').hidden=!recoveryToken;
+    email.disabled=!!recoveryToken;email.closest('label').hidden=!!recoveryToken;
+    confirm.disabled=!recoveryToken;confirm.required=!!recoveryToken;
+    document.getElementById('repeat').hidden=!recoveryToken;
+    pass.minLength=8;pass.autocomplete='new-password';
+    document.getElementById('hint').hidden=!recoveryToken;
+    send.textContent=recoveryToken?'Salvar nova senha':'Enviar link por e-mail';
+    send.disabled=false;
+    if(fragment.has('error'))notice.textContent='O link expirou. Solicite outro e-mail abaixo.';
+    form.oninput=()=>confirm.setCustomValidity('');
+    form.onsubmit=async e=>{
+      e.preventDefault();if(send.disabled)return;
+      if(recoveryToken&&pass.value!==confirm.value){confirm.setCustomValidity('As senhas precisam coincidir.');confirm.reportValidity();return}
+      send.disabled=true;
+      try{
+        if(recoveryToken){
+          await AtendaAuth.request('user','PUT',{password:pass.value},recoveryToken);
+          pass.value='';confirm.value='';AtendaAuth.clear();
+          await AtendaAuth.request('logout?scope=local','POST',undefined,recoveryToken).catch(()=>{});
+          notice.textContent='Senha atualizada. Entre com a nova senha.';
+        }else{
+          const redirect=encodeURIComponent(location.origin+'/login');
+          await AtendaAuth.request('recover?redirect_to='+redirect,'POST',{email:email.value.trim()});
+          notice.textContent='Se houver uma conta para esse e-mail, você receberá um link para criar uma nova senha.';
+        }
+        form.hidden=true;
+      }catch(err){notice.textContent=recoveryToken&&[401,403].includes(err.status)?'O link expirou. Abra a recuperação de senha novamente.':err.message}
+      finally{send.disabled=false}
+    };
+    return;
+  }
+  if(!signup){
+    const forgotLink=document.createElement('a');
+    forgotLink.href='/login?acao=recuperar';forgotLink.textContent='Esqueci minha senha';forgotLink.className='back';
+    form.after(forgotLink);
+  }
   if(fragment.size){history.replaceState(null,'',location.pathname+location.search);notice.textContent=fragment.has('error')?'O link expirou ou não é válido. Tente entrar com seu e-mail.':fragment.has('access_token')?'Seu e-mail foi confirmado. Entre com sua senha.':''}
   send.disabled=false;
   form.onsubmit=async event=>{

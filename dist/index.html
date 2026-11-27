@@ -9,6 +9,11 @@
 <section class="conversation" id="conversa"><div class="intro"><h2>Pergunta<br><em>pro Dot.</em></h2><p>Escolha uma pergunta. No portal, o Dot usa a fila da sua equipe para te orientar.</p></div><div class="sample"><header><img src="/dot.png" width="47" height="47" alt=""><b>Dot</b><small>Conversa de exemplo</small></header><div class="exchange" aria-live="polite"><p class="q">Quem precisa de mim agora?</p><p class="a">Neste exemplo, uma conversa aguarda a equipe. No portal, consulto a fila e te mostro onde abrir o próximo atendimento.</p></div><div class="choices"><button aria-pressed="true">Fila</button><button aria-pressed="false">Agentes</button><button aria-pressed="false">WhatsApp</button></div></div></section>
 <section class="end"><h2>Vamos ver a <em>sua fila?</em></h2><a href="/login" class="pill primary">Entrar na central</a></section></main><footer><strong>atenda</strong><span>Grupo MF</span></footer>
 <script>
+// Auth may redirect to the configured site root when an email link is opened.
+const authReturn=new URLSearchParams(location.hash.slice(1));
+if(authReturn.has('access_token')||authReturn.has('error_code')){
+  location.replace('/login'+location.hash);
+}
 const questions=[
  [document.querySelector('.q').textContent,document.querySelector('.a').textContent],
  ['Como testo meu primeiro agente?','Abra Agentes e escolha Testar. Responda como se fosse um cliente. Depois você pode ajustar a saudação e experimentar de novo.'],

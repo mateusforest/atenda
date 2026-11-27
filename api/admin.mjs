@@ -67,7 +67,7 @@ export default async function admin(req,res){
       if(!Number.isSafeInteger(offset)||offset<0)throw fault(400,'Página inválida.');
       await registerAccount(user);return send(200,await dashboard(offset,user.id));
     }
-    if(action==='channel'&&(req.method==='GET'||req.method==='POST'&&['connect','pause','resume'].includes(body.op))){
+    if(action==='channel'&&(req.method==='GET'||req.method==='POST'&&['connect','pause','resume','finance-on','finance-off'].includes(body.op))){
       return send(200,await callWindows({op:'official',action:req.method==='GET'?'status':body.op,owner:{id:user.id,email:user.email}}));
     }
     throw fault(405,'Operação indisponível.');

@@ -28,7 +28,8 @@ test('sessão isolada, boas-vindas únicas, suporte, adesão, saída e pausa',as
     if(path.endsWith('/send')){sent.push(body.message.text);return {key:{id:'ok'}}}
     assert.fail(path);
   };
-  const services={db,gateway,clientSession:'atenda-piloto',voice:{},draft:async()=>({text:'Abra o menu Agentes.'}),
+  let usedProfile;
+  const services={db,gateway,clientSession:'atenda-piloto',voice:{},draft:async p=>{usedProfile=p;return {text:'Abra o menu Agentes.'}},
     delivery:async req=>{if(req.op==='pull')return {jobs:[job,job]};receipts.push(req.status);return {}}};
   const agent=officialSupport(services);
   assert.equal((await agent.command('status')).state,'missing');assert.equal((await agent.command('connect')).state,'pairing');status='CONNECTED';
@@ -39,5 +40,12 @@ test('sessão isolada, boas-vindas únicas, suporte, adesão, saída e pausa',as
   incoming('off','PARAR');await agent.tick();incoming('skip','teste');await agent.tick();assert.equal(sent.length,3);
   incoming('on','SIM');await agent.tick();assert.equal(sent.length,4);
   await agent.command('pause');incoming('paused','Oi');await agent.tick();assert.equal(sent.length,4);
+  assert.equal((await agent.command('finance-on')).finance,true);
+  await agent.command('resume');incoming('finance','Minha fatura está paga?');await agent.tick();
+  assert.equal(usedProfile.name,'Assessor financeiro');
+  assert.match(usedProfile.goal,/Nunca afirme/);
+  const restarted=officialSupport(services);assert.equal((await restarted.command('status')).finance,true);
+  await restarted.command('finance-off');incoming('support','Minha mensalidade');await restarted.tick();
+  assert.equal(usedProfile.name,'Suporte da Atenda');
   assert.throws(()=>officialSupport({...services,clientSession:officialSession}));db.close();
 });

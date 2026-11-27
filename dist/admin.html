@@ -8,7 +8,7 @@
 <section id="visao" aria-label="Indicadores da administração">
 <div class="admin-metrics"><div>Contas na Atenda<strong id="m-accounts">—</strong></div><div>Leads da minha empresa<strong id="m-leads">—</strong></div><div>Atendimentos com a equipe<strong id="m-team">—</strong></div><div>Tarefas em aberto<strong id="m-tasks">—</strong></div></div>
 <div class="overview-channels"><h2>Operação da Atenda</h2><a href="#oficial"><span>WhatsApp oficial</span><strong id="overview-wa">Consultando</strong></a><a href="#luna"><span>Motor de atendimento Luna</span><strong id="overview-luna">Consultando</strong></a><a href="#cobranca"><span>Cobrança de mensalidades</span><strong id="overview-billing">Consultando</strong></a></div></section>
-<section id="cobranca"><div class="section-head"><h2>Meios de pagamento</h2><a href="/checkout">Abrir checkout</a></div><p id="billing-mode">Consultando ambiente de cobrança…</p><div class="actions"><span class="badge" id="pix-state">Pix Automático</span><span class="badge" id="card-state">Cartão recorrente</span></div></section>
+<section id="cobranca"><div class="section-head"><h2>Meios de pagamento</h2><a href="/checkout">Abrir checkout</a></div><p id="billing-mode">Consultando ambiente de cobrança…</p><div class="actions"><span class="badge" id="pix-state">Pix Automático</span><span class="badge" id="card-state">Cartão recorrente</span></div><h3>Avisos por e-mail</h3><p>Confirmações e recusas de mensalidades são enviadas ao e-mail confirmado da conta em produção.</p><strong id="mail-state" class="badge">Consultando</strong></section>
 <section id="meta"><h2>WhatsApp da empresa na Meta</h2><p id="meta-state" role="status"></p>
 <p>Cadastre o número da empresa no aplicativo Meta da Atenda. Para continuar usando o WhatsApp Business no celular, escolha o fluxo de coexistência, se a Meta oferecer essa opção.</p>
 <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer">Abrir aplicativos da Meta</a>
@@ -29,6 +29,8 @@
 <p>Este número dá as boas-vindas no cadastro, orienta quem escreve e envia avisos de mensalidade.</p>
 <div id="pair" hidden><img id="qr" width="220" height="220" alt="QR para vincular o WhatsApp oficial da Atenda"><p>No celular do suporte, abra <b>Aparelhos conectados → Conectar aparelho</b>.</p></div>
 <p id="number"></p><div class="actions"><button id="connect" hidden>Conectar número oficial</button><button id="toggle" class="light" hidden></button><button id="refresh" class="light">Atualizar conexão</button></div><output id="channel-message" role="status"></output>
+<h3>Assessor financeiro</h3><p>Orienta sobre mensalidades pelo mesmo número do suporte e envia avisos de cobrança a quem autorizou. O recebimento depende da habilitação dos meios de pagamento.</p>
+<div class="actions"><strong id="finance-state" class="badge">Consultando</strong><button id="finance-toggle" type="button" hidden>Ativar assessor financeiro</button></div>
 <details><summary>Últimos envios automáticos</summary><ul id="activity"></ul></details></section>
 <section id="contas"><div class="section-head"><h2>Contas cadastradas</h2><span id="count"></span></div><p id="billing-env"></p>
 <div class="scroll"><table><thead><tr><th>Empresa ou conta</th><th>Cadastro</th><th>Assinatura</th><th>Mensalidade</th></tr></thead><tbody id="accounts"></tbody></table></div>
