@@ -84,7 +84,11 @@ def main():
         ref = f"refs/review/pr-{number}"
         try:
             git("fetch", "--quiet", "--no-tags", ORIGIN, f"+refs/pull/{number}/head:{ref}")
-            review(f"pr-{number}", git("merge-base", main_head, ref), git("rev-parse", ref))
+            head = git("rev-parse", ref)
+            base = git("merge-base", main_head, ref)
+            # The pulls API can still list a just-merged PR. Keep its final review.
+            if base != head:
+                review(f"pr-{number}", base, head)
         except subprocess.CalledProcessError:
             errors.append(number)
     if errors:
