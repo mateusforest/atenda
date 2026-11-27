@@ -28,7 +28,7 @@ async function publish(owner,event){
   const resp=await fetch('https://atendadot.com/api/admin?action=service-record',{method:'POST',redirect:'error',signal:AbortSignal.timeout(18000),headers:{authorization:'Bearer '+workerToken('atenda-crm-v1'),'content-type':'application/json'},body:JSON.stringify({owner,event})});
   if(!resp.ok)throw fault(resp.status,'Sincronização do painel respondeu HTTP '+resp.status+'.');
 }
-export function serviceRecords({db,sessionId,gateway,voice,save=publish}){
+export function serviceRecords({db,sessionId,gateway,voice,ownerId:tenantId,ownerEmail=process.env.WA_OWNER_EMAIL,save=publish}){
   const session=encodeURIComponent(sessionId);
   db.exec('create table if not exists service_cursor(session text,jid text,stamp text,primary key(session,jid)); create table if not exists service_start(session text primary key,since integer)');
   const prior=db.prepare('select since from automatic_agent where session=?').get(sessionId);
@@ -60,7 +60,7 @@ export function serviceRecords({db,sessionId,gateway,voice,save=publish}){
           const after=mark?rows.findIndex(r=>r.keyId===mark.message)+1:0;
           const terms=JSON.parse(db.prepare('select profile from automatic_agent where session=?').get(sessionId)?.profile||'{}').handoff;
           const trigger=!mark?.active&&rows.slice(after).find((r,i)=>r.fromMe
-            ? promisesHandoff(r.text)&&db.prepare('select 1 from sends where key_id=?').get(r.keyId)
+            ? promisesHandoff(r.text)&&db.prepare("select 1 from sends where key_id=? and id like ? and instr(id,'/')=?").get(r.keyId,tenantId?sessionId+'/%':'%',tenantId?sessionId.length+1:0)
             : requestsTeam(r.text,terms)||acceptedHandoff(r.text,rows.slice(0,after+i).findLast(m=>m.fromMe)?.text));
           if(trigger)db.prepare('insert or replace into team_handoffs values(?,?,?,1)').run(sessionId,chat.jid,trigger.keyId);
           const team=!!(mark?.active||trigger),name=confirmedName(rows);
@@ -72,7 +72,7 @@ export function serviceRecords({db,sessionId,gateway,voice,save=publish}){
             const quote=texts.some(t=>/\b(cota[çc][ãa]o|or[çc]amento|proposta)\b/i.test(t));
             const teamToday=team&&day===dateFormat.format(incomingTime(last.timestamp));
             const event={session:sessionId,jid:chat.jid,day,time:incomingTime(messages.at(-1).timestamp),contactName:name||chat.name||chat.notify||inbound.at(-1).pushName,confirmedName:!!name,email:texts.join(' ').match(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/i)?.[0],summary:requestSummary(texts.join('\n'),name||chat.name),withTeam:teamToday,task:quote?'Preparar cotação':teamToday?'Retornar atendimento':''};
-            await save({id:ownerId,email:process.env.WA_OWNER_EMAIL},event);
+            await save({id:ownerId,email:ownerEmail},event);
           }
           db.prepare('insert or replace into service_cursor values(?,?,?)').run(sessionId,chat.jid,digest);
         }catch(e){issue=e.status?e.message:'Não foi possível registrar o atendimento.'}

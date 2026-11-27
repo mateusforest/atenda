@@ -8,7 +8,7 @@ import {trialReply} from '../lib/agent-profile.mjs';
 import {openingForGreeting,requestsTeam} from '../dist/agent-rules.mjs';
 import {incomingTime} from './automatic.mjs';
 
-export function receiver({db,gateway,session,sessionId,ownerEmail,official,automatic,crmIssue=()=>'',draft=agentEngine(),voice=voiceService(db,sessionId)}){
+export function receiver({db,gateway,session,sessionId,ownerEmail,ownerId,official,automatic,crmIssue=()=>'',draft=agentEngine(),voice=voiceService(db,sessionId)}){
   const photo=contactPhotos(gateway,session);
   db.exec(`pragma busy_timeout=3000;
   create table if not exists owner(session text primary key,user_id text not null);
@@ -17,7 +17,7 @@ export function receiver({db,gateway,session,sessionId,ownerEmail,official,autom
   create table if not exists service_chat(session text,jid text,name text,preview text,time integer,fromMe integer,primary key(session,jid));`);
   const teamState=jid=>db.prepare('select message,active from team_handoffs where session=? and jid=?').get(sessionId,jid);
   function verifyOwner(owner){
-    if(!uuid.test(owner?.id)||owner.email!==ownerEmail.toLowerCase())throw fault(403,'Conta sem acesso a este canal.');
+    if(!uuid.test(owner?.id)||(ownerId ? owner.id!==ownerId : owner.email!==ownerEmail.toLowerCase()))throw fault(403,'Conta sem acesso a este canal.');
     db.prepare('insert or ignore into owner values (?,?)').run(session,owner.id);
     if(db.prepare('select user_id from owner where session=?').get(session).user_id!==owner.id)throw fault(403,'O canal já possui outro vínculo de conta.');
   }
@@ -178,9 +178,10 @@ export function receiver({db,gateway,session,sessionId,ownerEmail,official,autom
       if(!automatic||automatic.status().revision!==cmd.autoRevision||last.fromMe||last.keyId!==cmd.expectedMessageId||mark?.active||mark?.message===last.keyId)
         throw fault(409,'O atendimento mudou antes do envio automático.');
     }
-    const inserted=db.prepare('insert or ignore into sends(id,digest) values (?,?)').run(cmd.requestId,digest);
+    const requestKey=ownerId?sessionId+'/'+cmd.requestId:cmd.requestId;
+    const inserted=db.prepare('insert or ignore into sends(id,digest) values (?,?)').run(requestKey,digest);
     if(!inserted.changes){
-      const previous=db.prepare('select digest,key_id from sends where id=?').get(cmd.requestId);
+      const previous=db.prepare('select digest,key_id from sends where id=?').get(requestKey);
       if(previous.digest!==digest)throw fault(409,'Identificador de envio já utilizado.');
       if(previous.key_id)return {keyId:previous.key_id};
       throw fault(409,'Envio sem confirmação. Confira o histórico antes de enviar outra resposta.');
@@ -190,7 +191,7 @@ export function receiver({db,gateway,session,sessionId,ownerEmail,official,autom
     try{sent=await gateway('messages/'+session+'/'+contact+'/send',{message:{text:cmd.text}})}
     catch{throw fault(502,'Envio sem confirmação do WhatsApp. Confira o histórico antes de repetir.')}
     if(!sent?.key?.id)throw fault(502,'O WhatsApp ainda não confirmou o envio.');
-    db.prepare('update sends set key_id=? where id=?').run(sent.key.id,cmd.requestId);
+    db.prepare('update sends set key_id=? where id=?').run(sent.key.id,requestKey);
     return {keyId:sent.key.id};
   }
 }

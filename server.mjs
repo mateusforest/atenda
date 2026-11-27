@@ -33,6 +33,7 @@ http.createServer(async(req,res)=>{
  for(const [route,file] of [['/admin','admin.html'],['/admin/','admin.html'],['/admin.html','admin.html'],['/admin.js','admin.js'],['/admin.css','admin.css']])pages.set(route,file);
  pages.set('/inbox.js','inbox.js');
  pages.set('/agent-rules.mjs','agent-rules.mjs');
+ pages.set('/company-team.mjs','company-team.mjs');
  pages.set('/agent-models.mjs','agent-models.mjs');
  pages.set('/billing.js','billing.js');
  pages.set('/checkout','checkout.html');

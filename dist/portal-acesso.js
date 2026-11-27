@@ -10,14 +10,17 @@
       .then(async r=>{if(!r.ok)return;const access=await r.json();if(access.admin){const link=document.createElement('a');link.className='dot-home';link.href='/admin';link.textContent='Administração';document.querySelector('.bar .account-exit').before(link)}}).catch(()=>{});
     const key='atenda.v1.'+user.id;
     // Preserve an existing operator's local demo when upgrading an already active session.
-    if(legacySession&&!localStorage.getItem(key)&&!localStorage.getItem('atenda.legacy.owner')){
+    if(legacySession&&!localStorage.getItem(key)&&localStorage.getItem('atenda.legacy.owner')===user.id){
       const old=localStorage.getItem('atenda.v1');
       if(old){localStorage.setItem(key,old);localStorage.setItem('atenda.legacy.owner',user.id)}
     }
     sessionStorage.setItem('atenda.auth.v2','1');
     const script=document.createElement('script');script.src='/central.js';
     script.onerror=()=>{text.textContent='Não foi possível carregar o portal.';gate.querySelector('div').hidden=false};
-    script.onload=()=>{document.body.classList.remove('validating');gate.remove();const motion=document.createElement('script');motion.src='/dot-motion.js';document.body.append(motion)};
+    script.onload=async ()=>{
+      try{await window.startCompanyPortal()}
+      catch(error){text.textContent=error.message||'Não foi possível carregar a equipe.';gate.querySelector('div').hidden=false;return}
+      document.body.classList.remove('validating');gate.remove();const motion=document.createElement('script');motion.src='/dot-motion.js';document.body.append(motion)};
     document.body.append(script);
   }catch(e){
     if(!AtendaAuth.session||[401,403].includes(e.status)){location.replace('/login');return}

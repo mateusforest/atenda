@@ -17,7 +17,7 @@ export function incomingTime(time){
   const n=Number(time);
   return time!=null&&Number.isFinite(n)?(n<1e11?n*1000:n):Date.parse(time);
 }
-export function automaticAgent({db,sessionId,gateway,execute,draft=cloudDraft}){
+export function automaticAgent({db,sessionId,ownerId,gateway,execute,draft=cloudDraft}){
   const session=encodeURIComponent(sessionId);
   db.exec('create table if not exists automatic_agent(session text primary key,owner text,agent text,profile text,since integer,revision text)');
   const current=()=>db.prepare('select * from automatic_agent where session=?').get(sessionId);
@@ -60,7 +60,7 @@ export function automaticAgent({db,sessionId,gateway,execute,draft=cloudDraft}){
           if(mark?.active||mark?.message===last.keyId)continue;
           const h=createHash('sha256').update(JSON.stringify([sessionId,chat.jid,last.keyId])).digest('hex');
           const requestId=[h.slice(0,8),h.slice(8,12),h.slice(12,16),h.slice(16,20),h.slice(20,32)].join('-');
-          const previous=db.prepare('select key_id from sends where id=?').get(requestId);
+          const previous=db.prepare('select key_id from sends where id=?').get(ownerId?sessionId+'/'+requestId:requestId);
           if(previous){if(!previous.key_id)failure='Envio sem confirmação. Confira o histórico da conversa.';continue}
           const context=await execute({...args,op:'suggestContext',messageId:last.keyId});
           if(context.handoff)continue;

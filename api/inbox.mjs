@@ -3,7 +3,11 @@ import {lunaReply} from '../lib/luna.mjs';
 import {lunaKey} from '../lib/luna-key.mjs';
 import {trialReply} from '../lib/agent-profile.mjs';
 
-export default async function inbox(req,res) {
+export default function inbox(req,res){
+  return handleInbox(req,res,callWindows);
+}
+
+export async function handleInbox(req,res,relay) {
   res.setHeader('Cache-Control','private, no-store');
   res.setHeader('Content-Type','application/json; charset=utf-8');
   res.setHeader('X-Content-Type-Options','nosniff');
@@ -22,14 +26,15 @@ export default async function inbox(req,res) {
     const isOwner=user.email?.toLowerCase()===WA_OWNER_EMAIL.toLowerCase();
     if(!isOwner){
       const b=req.method==='POST'&&(typeof req.body==='string'?JSON.parse(req.body):req.body);
-      if(b?.op!=='trial')throw fault(403,'Esta conta não possui este canal de WhatsApp.');
-      const {hasCurrentPayment}=await import('../lib/subscriber-access.mjs');
-      if(!await hasCurrentPayment(user.id))throw fault(403,'O teste do Luna requer uma mensalidade vigente.');
+      if(b?.op==='trial'){
+        const {hasCurrentPayment}=await import('../lib/subscriber-access.mjs');
+        if(!await hasCurrentPayment(user.id))throw fault(403,'O teste do Luna requer uma mensalidade vigente.');
+      }
     }
     const params=new URL(req.url,'https://atenda.local').searchParams;
     const owner={id:user.id,email:user.email.toLowerCase()};
     const meta=process.env.ATENDA_META_SEED&&isOwner?(await (await import('../lib/meta-store.mjs')).read('config'))?.data:null;
-    const dispatch=async cmd=>meta?.active?(await import('../lib/meta-atendimento.mjs')).metaCommand(meta,cmd):callWindows(cmd);
+    const dispatch=async cmd=>meta?.active?(await import('../lib/meta-atendimento.mjs')).metaCommand(meta,cmd):relay(cmd);
     let command;
     if(req.method==='GET'){
       const op=params.get('view')||'chats', jid=params.get('jid');
@@ -53,7 +58,7 @@ export default async function inbox(req,res) {
         if(!['trial','review'].includes(body.op)&&(typeof body.messageId!=='string'||!body.messageId||body.messageId.length>200))throw fault(400,'Mensagem inválida.');
         if(JSON.stringify(body).length>40000)throw fault(413,'Contexto muito longo.');
         const key=['trial','suggest'].includes(body.op)?await lunaKey():'';
-        if(!isOwner&&!key)throw fault(503,'O Luna ainda precisa de uma chave na administração.');
+        if(!isOwner&&['trial','suggest'].includes(body.op)&&!key)throw fault(503,'O Luna ainda precisa de uma chave na administração.');
         const draft=(p,h)=>lunaReply(p,h,{key});
         if(body.op==='trial'&&key)return json(200,await trialReply(draft,body.profile,body.history));
         if(body.op==='suggest'&&key){

@@ -59,6 +59,8 @@ function roleEditor(agent){
 }
 const money=v=>'R$ '+Number(v).toLocaleString('pt-BR');
 const oldWorkspace=Boolean(localStorage.getItem(localDataKey));
+const importSavedTeam=oldWorkspace&&!data.teamOnServer;
+let teamStore;
 function makeAgent(model,first=false){
  const m=models[model];
  return {id:crypto.randomUUID(),model,name:m.name,goal:m.goal,greeting:m.greeting,question:m.questions.join('\n'),tone:'Humanizado',pace:'Direto',knowledge:'',handoff:'',licensed:first,paused:false};
@@ -69,17 +71,25 @@ if(!data.team){
  else{data.threads=[]}
  data.team=[base];
  if(oldWorkspace)for(const a of catalog){const state=data.extras[a.id];if(state&&(state.owned||state.requested)){data.team.push({...makeAgent(customModel),name:a.name,goal:a.description,greeting:a.welcome,question:a.questions.join('\n'),paused:!state.active})}}
- data.workspace=oldWorkspace?'Agência de viagens':'Minha empresa';save();
+ data.workspace=oldWorkspace?'Agência de viagens':'Minha empresa';
 }
 // Keep previously configured combinations under the model that now owns them.
 const previouslyCombined=data.team.filter(a=>a.model!==customModel&&serviceRoles.some(r=>Object.hasOwn(a.functions||{},r.key)));
 if(previouslyCombined.length){
  for(const a of previouslyCombined)a.model=customModel;
- save();
 }
 const monthly=(n=data.team.filter(a=>a.licensed).length)=>490+190*Math.max(0,n-1);
 function action(label,fn,variant='light'){return '<button type="button" class="btn '+variant+'" onclick="'+fn+'">'+label+'</button>'}
 function cmd(fn,id){return fn+'(&quot;'+esc(id)+'&quot;)'}
+async function saveTeam(next){
+ data.team=await teamStore.save(next);
+ save();
+}
+async function updateMember(member){
+ await saveTeam(data.team.map(a=>a.id===member.id?member:a));
+ try{await syncPublishedAgent(member)}
+ catch(e){throw Error('Equipe salva. Confira a publicação do agente no WhatsApp. '+e.message)}
+}
 function findMember(id){return data.team.find(a=>a.id===id)}
 function testAgentAI(id){
  const a=findMember(id),history=[];
@@ -108,7 +118,7 @@ function teamPage(){
  return '<div class="heading"><div>'+title('Minha equipe','Os agentes compartilham o número da empresa. Em WhatsApp, escolha quem responde automaticamente. Em Conversas, a equipe acompanha e assume os atendimentos.')+'</div>'+action('Adicionar agente','chooseModel()','')+'</div><div class="catalog pane">'+data.team.map(a=>'<article class="special"><div class="row"><span class="tile">'+icon('agent')+'</span><span class="tag '+(a.licensed&&!a.paused?'bot':'')+'">'+(a.licensed?(a.paused?'Pausado':'Ativo em teste'):'Rascunho')+'</span></div><small>'+(models[a.model].label||models[a.model].name)+'</small><h2>'+esc(a.name)+'</h2><p>'+esc(a.goal)+'</p>'+(memberRoles(a).length?'<p class="member-role-summary">'+memberRoles(a).map(r=>r.label).join(' · ')+'</p>':'')+'<div class="actions">'+action('Configurar',cmd('configure',a.id))+action('Testar roteiro',cmd('tryMember',a.id))+action('Testar IA',cmd('testAgentAI',a.id))+(a.licensed?action(a.paused?'Retomar':'Pausar',cmd('toggleMember',a.id)):action('Ativar',cmd('activateDialog',a.id),''))+'</div></article>').join('')+'</div>';
 }
 function chooseModel(){modal('Adicionar agente','<div class="options">'+[...serviceRoles.map(role=>role.model),customModel].map(i=>'<button class="option" onclick="newDraft('+i+')"><b>'+(models[i].label||models[i].name)+'</b><small>'+models[i].description+'</small></button>').join('')+'</div>')}
-function newDraft(i){const a=makeAgent(i);if(i===customModel)a.functions=Object.fromEntries(serviceRoles.filter(r=>['atendimento','suporte','consultoria'].includes(r.key)).map(r=>[r.key,models[r.model].questions[0]]));data.team.push(a);save();dialog.close();go('agent');configure(a.id)}
+async function newDraft(i){const a=makeAgent(i);if(i===customModel)a.functions=Object.fromEntries(serviceRoles.filter(r=>['atendimento','suporte','consultoria'].includes(r.key)).map(r=>[r.key,models[r.model].questions[0]]));try{await saveTeam([...data.team,a]);dialog.close();go('agent');configure(a.id)}catch(e){modal('Não foi possível adicionar o agente',esc(e.message))}}
 function field(label,key,value,area=false){return '<label class="field">'+label+(area?'<textarea name="'+key+'" maxlength="2000">'+esc(value)+'</textarea>':'<input name="'+key+'" value="'+esc(value)+'" maxlength="240" required>')+'</label>'}
 function select(label,key,values,current){return '<label class="field">'+label+'<select name="'+key+'" aria-label="'+esc(label)+'">'+values.map(v=>'<option '+(v===current?'selected':'')+'>'+v+'</option>').join('')+'</select></label>'}
 function configure(id){
@@ -156,13 +166,13 @@ function configure(id){
    v.functions=Object.fromEntries(values.getAll('role').map(key=>[key,values.get('role-'+key).trim()]));
  }
  const submit=form.querySelector('[type=submit]')||form.querySelector('button.btn');if(submit.disabled)return;submit.disabled=true;
- try{await syncPublishedAgent({...a,...v});Object.assign(a,v);save();dialog.close();go('agent')}
+ try{await updateMember({...a,...v});dialog.close();go('agent')}
  catch(error){let out=form.querySelector('[data-error]');if(!out){out=document.createElement('output');out.dataset.error='';form.append(out)}out.textContent=error.message}
  finally{submit.disabled=false}};
 }
-async function toggleMember(id){const a=findMember(id);if(a.licensed){try{await syncPublishedAgent({...a,paused:!a.paused});a.paused=!a.paused;save();render()}catch(e){modal('Não foi possível atualizar o agente',esc(e.message))}}}
+async function toggleMember(id){const a=findMember(id);if(a.licensed){try{await updateMember({...a,paused:!a.paused});render()}catch(e){modal('Não foi possível atualizar o agente',esc(e.message))}}}
 function activateDialog(id){const a=findMember(id);if(a.licensed)return;modal('Ativar '+a.name,'<div class="stack"><p>Agente adicional no mesmo WhatsApp · R$ 190/mês</p><div class="listrow">Mensalidade atual<b>'+money(monthly())+'</b></div><div class="listrow">Após a ativação<b>'+money(monthly(data.team.filter(x=>x.licensed).length+1))+'/mês</b></div><p class="muted">Simulação local de assinatura. Nenhum pagamento será processado.</p>'+action('Confirmar ativação de teste',cmd('licenseMember',id),'')+'</div>')}
-function licenseMember(id){const a=findMember(id);a.licensed=true;a.paused=false;save();dialog.close();go('agent')}
+async function licenseMember(id){try{await updateMember({...findMember(id),licensed:true,paused:false});dialog.close();go('agent')}catch(e){modal('Não foi possível ativar o agente',esc(e.message))}}
 function tryMember(id,roleKey){
  const a=findMember(id),roles=memberRoles(a),role=roles.find(r=>r.key===roleKey);
  if(roles.length&&!role){
@@ -190,7 +200,7 @@ function tryMember(id,roleKey){
 function subscription(){const n=data.team.filter(a=>a.licensed).length;
  return '<section class="card stack pane"><h2>Mensalidade da Atenda</h2><a class="btn" href="/checkout">Abrir tela de pagamento</a></section>'+ '<div class="grid pane"><section class="card stack"><h2>Simulador de equipe</h2><div class="price">'+money(monthly())+'<small> / mês</small></div><div class="listrow">Portal, 1 número e 1 agente<b>R$ 490</b></div><div class="listrow">'+(n-1)+' adicionais × R$ 190<b>'+money((n-1)*190)+'</b></div><p class="muted">Várias funções no mesmo agente contam uma vez. Pausar mantém o agente na assinatura simulada. Rascunhos são gratuitos.</p>'+action('Gerenciar agentes',"go(&quot;agent&quot;)")+data.team.filter((a,i)=>i&&a.licensed).map(a=>action('Remover '+esc(a.name)+' do plano',cmd('removeDialog',a.id))).join('')+'</section><section class="card stack"><span class="tile">'+icon('support')+'</span><h2>Projeto personalizado</h2><p>Implantação a partir de <b>R$ 3.900</b> para até dois agentes, além da mensalidade.</p><p class="muted">Inclui configuração, testes, treinamento e 30 dias de acompanhamento. Equipes maiores e integrações recebem orçamento por escopo.</p>'+action(data.project?'Ver solicitação':'Solicitar implantação','projectDialog()','')+'</section></div>'}
 function removeDialog(id){const a=findMember(id);if(a===data.team[0]||!a.licensed)return;modal('Remover agente do plano','<div class="stack"><p>'+esc(a.name)+' voltará para rascunho. Próxima mensalidade simulada: <b>'+money(monthly()-190)+'</b>.</p>'+action('Confirmar remoção',cmd('removeLicense',id),'')+'</div>')}
-async function removeLicense(id){const a=findMember(id);if(a!==data.team[0]){try{await syncPublishedAgent({...a,licensed:false});a.licensed=false;a.paused=true;save()}catch(e){dialog.close();modal('Não foi possível pausar o agente',esc(e.message));return}}dialog.close();go('billing')}
+async function removeLicense(id){const a=findMember(id);if(a!==data.team[0]){try{await updateMember({...a,licensed:false,paused:true})}catch(e){dialog.close();modal('Não foi possível pausar o agente',esc(e.message));return}}dialog.close();go('billing')}
 function projectDialog(){const p=data.project||{};modal('Projeto personalizado','<form id="projectForm" class="stack">'+field('Empresa','company',p.company||data.workspace)+field('Quantidade de agentes','size',p.size||'2').replace('maxlength="240"','type="number" min="1" max="999"')+field('O que sua equipe precisa automatizar?','scope',p.scope||'',true)+'<p class="muted">Solicitação de demonstração salva neste navegador. O orçamento depende do escopo.</p><button class="btn">Salvar solicitação</button></form>');document.querySelector('#projectForm').onsubmit=e=>{e.preventDefault();data.project=Object.fromEntries(new FormData(e.target));data.workspace=data.project.company;save();dialog.close();go('billing')}}
 
 const menuButton = document.querySelector('.mobile-menu');
@@ -316,10 +326,15 @@ let trial,step,specialist;
 function startTest(id){specialist=catalog.find(a=>a.id===id);if(specialist&&!data.extras[id]?.active)return;if(!specialist&&!data.enabled){notice.textContent='Ative o agente e salve para testar.';return}trial={id:Math.max(...data.threads.map(t=>t.id))+1,name:'Viajante de teste',status:1,agentName:specialist?.name||data.name,messages:[[1,specialist?.welcome||data.greeting]]};step=0;testView()}
 function testView(){modal(trial.agentName,bubbles(trial)+'<form class="compose" id="testform"><input required maxlength="500" name="text" placeholder="Responda como viajante" aria-label="Resposta do viajante"><button class="btn">Enviar</button></form>');testform.onsubmit=e=>{e.preventDefault();const v=testform.elements.text.value.trim();if(!v)return;trial.messages.push([0,v]);const script=specialist?.questions||questions;if(step===script.length||/\b(humano|atendente|consultor)\b/i.test(v)){trial.messages.push([1,'Vou encaminhar seu atendimento para um consultor da agência.']);if(!specialist){trial.trip=trial.messages.filter(([out])=>!out).map(([,msg])=>msg);if(/\b(humano|atendente|consultor)\b/i.test(v))trial.trip.pop();trial.stage=0}trial.status=0;data.threads.unshift(trial);save();go('agent');openThread(trial.id);return}trial.messages.push([1,script[step++]]);testView()}}
 const linkedChat=location.hash.match(/^#conversa=(\d{1,24})(?:%40|@)(lid|s\.whatsapp\.net)$/i);
-if(location.hash==='#assinatura')go('billing');else render();
+window.startCompanyPortal=async ()=>{
+ const {connectTeam}=await import('/company-team.mjs');
+ teamStore=await connectTeam(data.team,importSavedTeam);
+ data.team=teamStore.team;data.teamOnServer=true;save();
+ if(location.hash==='#assinatura')go('billing');else render();
 Empresa.init().then(()=>{
   if(linkedChat && page==='home') openWhatsAppInbox('team',{jid:linkedChat[1]+'@'+linkedChat[2],name:linkedChat[1]});
 });
+};
 
 ;
 (()=>{

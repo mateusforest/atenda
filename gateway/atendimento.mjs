@@ -1,8 +1,5 @@
 import {DatabaseSync} from 'node:sqlite';
-import {receiver} from './receiver.mjs';
-import {automaticAgent} from './automatic.mjs';
-import {serviceRecords} from './service-records.mjs';
-import {voiceService} from './voice.mjs';
+import {companyChannels} from './company-channels.mjs';
 import {officialSupport} from './official-support.mjs';
 import {dirname,join} from 'node:path';
 import {mkdirSync} from 'node:fs';
@@ -13,7 +10,6 @@ const stateDir=process.env.ATENDA_STATE_DIR||(LOCALAPPDATA&&join(LOCALAPPDATA,'A
 if(!WA_AKG_API_KEY||!WA_AKG_SESSION||!WA_OWNER_EMAIL||!stateDir)throw Error('Configuração do atendimento incompleta.');
 const origin=new URL(WA_AKG_URL);
 if(!['http://127.0.0.1:38741','http://gateway:3000'].includes(origin.origin))throw Error('O atendimento requer a rede privada do gateway da Atenda.');
-const session=encodeURIComponent(WA_AKG_SESSION);
 const filename=join(stateDir,'atendimento.sqlite');
 mkdirSync(dirname(filename),{recursive:true});
 const db=new DatabaseSync(filename);
@@ -28,18 +24,15 @@ async function gateway(path,body,method=body?'POST':'GET'){
   return payload.data ?? payload;
 }
 const official=officialSupport({db,gateway,clientSession:WA_AKG_SESSION});
-const automatic=automaticAgent({db,gateway,sessionId:WA_AKG_SESSION,execute:cmd=>execute(cmd)});
-const voice=voiceService(db,WA_AKG_SESSION);
-const execute=receiver({db,gateway,session,sessionId:WA_AKG_SESSION,ownerEmail:WA_OWNER_EMAIL,official,automatic,voice,crmIssue:()=>crm.issue()});
-const crm=serviceRecords({db,gateway,sessionId:WA_AKG_SESSION,voice});
-setInterval(()=>{void crm.sync()},12000).unref();
-setInterval(()=>{void automatic.tick()},5000).unref();
+const channels=companyChannels({db,gateway,legacySession:WA_AKG_SESSION,legacyEmail:WA_OWNER_EMAIL,official});
+setInterval(()=>channels.sync(),12000).unref();
+setInterval(()=>channels.tick(),5000).unref();
 setInterval(()=>{void official.tick()},12000).unref();
 
 const bus=transport();
 bus.listen('request',async ({id,command})=>{
   let answer;
-  try{answer={data:await execute(command)}}catch(e){answer={status:e.status||503,error:e.status?e.message:'Gateway local indisponível.'}}
+  try{answer={data:await channels.execute(command)}}catch(e){answer={status:e.status||503,error:e.status?e.message:'Gateway local indisponível.'}}
   try{await bus.send('answer',{id,...answer})}catch{/* O solicitante pode já ter expirado. */}
 });
 bus.channel.subscribe(status=>{if(['SUBSCRIBED','CHANNEL_ERROR','TIMED_OUT','CLOSED'].includes(status))console.log('Canal de atendimento:',status)});

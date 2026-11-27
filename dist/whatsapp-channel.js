@@ -123,7 +123,6 @@ class AutomaticReplies extends HTMLElement {
 customElements.define('wa-automatic-replies',AutomaticReplies);
 
 async function syncPublishedAgent(agent){
-  if(data.publishedAgent!==agent.id)return;
   const state=await agentRequest('automatic',{mode:'status'});
   if(state.agent!==agent.id){data.publishedAgent=state.agent;save();return}
   const enabled=agent.licensed&&!agent.paused;
