@@ -28,6 +28,8 @@ export default async function inbox(req,res) {
     }
     const params=new URL(req.url,'https://atenda.local').searchParams;
     const owner={id:user.id,email:user.email.toLowerCase()};
+    const meta=process.env.ATENDA_META_SEED&&isOwner?(await (await import('../lib/meta-store.mjs')).read('config'))?.data:null;
+    const dispatch=async cmd=>meta?.active?(await import('../lib/meta-atendimento.mjs')).metaCommand(meta,cmd):callWindows(cmd);
     let command;
     if(req.method==='GET'){
       const op=params.get('view')||'chats', jid=params.get('jid');
@@ -53,7 +55,7 @@ export default async function inbox(req,res) {
         const draft=(p,h)=>lunaReply(p,h,{key});
         if(body.op==='trial'&&key)return json(200,await trialReply(draft,body.profile,body.history));
         if(body.op==='suggest'&&key){
-          const result=await callWindows({op:'suggestContext',owner,jid:body.jid,profile:body.profile,messageId:body.messageId});
+          const result=await dispatch({op:'suggestContext',owner,jid:body.jid,profile:body.profile,messageId:body.messageId});
           return json(200,result.context?await draft(body.profile,result.context):result);
         }
         command={op:body.op,owner,jid:body.jid,messageId:body.messageId,profile:body.profile,history:body.history,offset:body.offset};
@@ -62,6 +64,6 @@ export default async function inbox(req,res) {
       command={op:'send',owner,jid:body.jid,requestId:body.requestId,text:body.text.trim()};
       }
     } else throw fault(405,'Método inválido.');
-    json(200,await callWindows(command));
+    json(200,await dispatch(command));
   } catch(error){json(error.status||503,{error:error.status?error.message:'O serviço de atendimento está indisponível.'})}
 }

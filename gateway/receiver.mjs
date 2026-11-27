@@ -49,6 +49,11 @@ export function receiver({db,gateway,session,sessionId,ownerEmail,official,autom
       }
       return {saved:true};
     }
+    if(cmd.op==='metaSnapshot'&&automatic){
+      const since=db.prepare('select since from service_start where session=?').get(sessionId)?.since||Date.now();
+      const chats=db.prepare('select jid,name from service_chat where session=? order by jid limit 40 offset ?').all(sessionId,cmd.offset||0);
+      return {chats,since,automatic:automatic.status(),profile:automatic.activeProfile()};
+    }
     if(cmd.op==='automatic'&&automatic)return automatic.configure(cmd);
     if(cmd.op==='official'&&official)return official.command(cmd.action);
     if(cmd.op==='trial') {

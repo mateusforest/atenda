@@ -56,6 +56,10 @@ export default async function admin(req,res){
     const allowed=!!process.env.ATENDA_ADMIN_ID&&user.id===process.env.ATENDA_ADMIN_ID;
     if(action==='visit'&&req.method==='POST'){await registerAccount(user);return send(200,{admin:allowed})}
     if(!allowed)throw fault(403,'Esta área é exclusiva do proprietário da Atenda.');
+    if(action==='meta'&&['GET','POST'].includes(req.method)){
+      const {metaSetup}=await import('../lib/meta-setup.mjs');
+      return send(200,await metaSetup(req.method==='GET'?{}:body,user));
+    }
     if(action==='luna'&&req.method==='POST'){await saveLunaKey(body.key);return send(200,{configured:true})}
     if(action==='luna'&&req.method==='GET')return send(200,{configured:!!await lunaKey()});
     if(action==='overview'&&req.method==='GET'){

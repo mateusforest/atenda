@@ -71,5 +71,14 @@
   if(!AtendaAuth.session){location.replace('/login?next=admin');return}
   api('luna').then(d=>{keyState(d);el('workspace').hidden=false;el('access').textContent='';if(location.hash==='#luna')el('luna-key').focus()})
     .catch(e=>{if(!denial(e)){el('key-state').textContent='Indisponível';el('key-message').textContent=e.message}});
-  accounts(0).then(ok=>{if(ok)sync()});
+  const metaForm=el('meta-form'),metaNotice=el('meta-notice');
+  function paintMeta(s){
+    el('meta-state').textContent=s.number+' · '+(s.active?'Atendimento na Vercel':s.configured?'Credenciais verificadas. Falta ativar o canal.':'Aguardando cadastro na Meta.')+(s.received?' Última mensagem recebida pela Meta em '+new Date(s.received).toLocaleString('pt-BR')+'.':'');
+    metaForm.hidden=s.active;el('meta-activate').hidden=!s.configured||s.active;
+  }
+  el('meta-verify').onclick=async()=>{try{const r=await api('meta',{op:'token'});await navigator.clipboard.writeText(r.token);metaNotice.textContent='Token copiado. Cole no campo de verificação da Meta.'}catch(e){metaNotice.textContent=e.message}};
+  metaForm.onsubmit=async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;
+    try{paintMeta(await api('meta',{op:'save',...Object.fromEntries(new FormData(metaForm))}));metaNotice.textContent='Número conferido com o WhatsApp atual.'}catch(err){metaNotice.textContent=err.message}finally{metaForm.elements.token.value='';metaForm.elements.secret.value='';b.disabled=false}};
+  el('meta-activate').onclick=async e=>{const b=e.currentTarget;b.disabled=true;try{paintMeta(await api('meta',{op:'activate'}));metaNotice.textContent='Envie uma mensagem de outro celular para testar.'}catch(err){metaNotice.textContent=err.message}finally{b.disabled=false}};
+  accounts(0).then(ok=>{if(ok){api('meta').then(paintMeta).catch(e=>{el('meta-state').textContent=e.message});sync()}});
 })();

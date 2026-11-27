@@ -100,7 +100,7 @@ class AutomaticReplies extends HTMLElement {
       data.publishedAgent=result.agent;save();
       enable.textContent=result.enabled?'Publicar configuração do agente':'Ativar respostas automáticas';
       pause.hidden=!result.enabled;enable.disabled=!select.value;
-      message.textContent=(result.enabled?result.name+' responde às novas mensagens.':'O envio automático está pausado.')+' '+(result.host==='Windows'?'O número está conectado neste Windows e precisa dele ligado.':'O conector roda no servidor.')+(result.issue?' '+result.issue:'');
+      message.textContent=(result.enabled?result.name+' responde às novas mensagens.':'O envio automático está pausado.')+' '+(result.host==='Windows'?'O número está conectado neste Windows e precisa dele ligado.':(result.host==='Meta / Vercel'?'O atendimento usa a API da Meta na Vercel. Você pode desligar o computador.':'O conector roda no servidor.'))+(result.issue?' '+result.issue:'');
     };
     const change=async mode=>{
       enable.disabled=pause.disabled=true;
@@ -217,7 +217,7 @@ class WhatsAppProfile extends HTMLElement {
       this.querySelector('[data-name]').textContent=p.name||'Nome indisponível';
       this.querySelector('[data-number]').textContent=p.number||'Número indisponível';
       this.querySelector('[data-about]').textContent=p.about||'Sem recado disponível.';
-      output.textContent=p.crmIssue||'';this.querySelector('[data-edit]').disabled=false;
+      output.textContent=p.crmIssue||'';this.querySelector('[data-edit]').disabled=p.editable===false;
     }catch(e){output.textContent=e.message}
   }
   edit(){
