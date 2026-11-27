@@ -1,7 +1,7 @@
 const Empresa = (() => {
-  const baseSections={leads:'Leads', clients:'Clientes', documents:'Documentos', tasks:'Tarefas', payments:'Pagamentos'};
-  const singular={leads:'lead',clients:'cliente',documents:'documento',tasks:'tarefa',payments:'pagamento'};
-  const stages={leads:['Novo','Em contato','Qualificado','Perdido'],clients:['Ativo','Inativo'],documents:['Vigente','Em revisão','Arquivado'],tasks:['A fazer','Em andamento','Concluída'],payments:['Pendente','Pago','Cancelado']};
+  const baseSections={leads:'Leads', clients:'Clientes', services:'Atendimentos', documents:'Documentos', tasks:'Tarefas', payments:'Pagamentos'};
+  const singular={leads:'lead',clients:'cliente',services:'atendimento',documents:'documento',tasks:'tarefa',payments:'pagamento'};
+  const stages={leads:['Novo','Em contato','Qualificado','Perdido'],clients:['Ativo','Inativo'],services:['Com agente','Com equipe','Concluído'],documents:['Vigente','Em revisão','Arquivado'],tasks:['A fazer','Em andamento','Concluída'],payments:['Pendente','Pago','Cancelado']};
   const empty=()=>({profile:{},sections:[],records:[],connections:[]});
   let state=empty(),rev='',email='',section='leads',settingsTab='Empresa',searchText='',loading=false,fault='';
   const allSections=()=>({...baseSections,...Object.fromEntries(state.sections.map(s=>[s.id,s.name]))});
@@ -42,7 +42,7 @@ const Empresa = (() => {
   }
   function recordList(){
     const s=section,q=searchText.trim().toLocaleLowerCase('pt-BR');
-    const list=state.records.filter(r=>r.section===s&&[r.name,r.contact,r.email,r.status,r.notes].join(' ').toLocaleLowerCase('pt-BR').includes(q));
+    const list=state.records.filter(r=>r.section===s&&[r.name,r.contact,r.email,r.status,r.notes,r.waSummary].join(' ').toLocaleLowerCase('pt-BR').includes(q));
     return list.map(r=>'<button class="ws-row" data-wop="editRecord" data-wid="'+esc(r.id)+'"><span><b>'+esc(r.name)+'</b><small>'+esc([r.contact,r.date,r.section==='payments'?moneyBR(r.amount):r.file?.name].filter(Boolean).join(' · '))+'</small></span><span class="badge">'+esc(r.status||'Abrir')+'</span></button>').join('')||'<p class="muted">'+(q?'Nenhum resultado para esta busca.':'Nenhum registro nesta seção.')+'</p>';
   }
   function paymentSummary(){const sums={Pendente:0,Pago:0};for(const r of state.records)if(r.section==='payments'&&Object.hasOwn(sums,r.status))sums[r.status]+=Number(r.amount)||0;return '<div class="ws-totals"><span>Pendente <b>'+esc(moneyBR(sums.Pendente))+'</b></span><span>Pago <b>'+esc(moneyBR(sums.Pago))+'</b></span></div>'}
@@ -56,6 +56,7 @@ const Empresa = (() => {
     else fields+=sel('Contato relacionado','related',{'':'Sem vínculo',...Object.fromEntries(state.records.filter(x=>['clients','leads'].includes(x.section)).map(x=>[x.id,x.name]))},r.related);
     if(s==='payments')fields+=fld('Valor (R$)','amount',r.amount,'number','required min="0" step=".01"');
     if(s==='documents')fields+=r.file?btn('Baixar '+r.file.name,'download',r.file.id):'<label class="field">Arquivo de até 2 MB<input type="file" name="attachment" required></label>';
+    if(r.waSummary)fields+='<details open><summary>Solicitação pelo WhatsApp</summary><p style="white-space:pre-line">'+esc(r.waSummary)+'</p></details>';
     fields+=fld('Observações','notes',r.notes,'area');
     modal((id?'Editar ':'Adicionar ')+(singular[s]||'registro'),'<form class="stack" id="ws-record">'+fields+(s==='leads'&&id?btn('Converter em cliente','convert',id):'')+submit('Salvar')+'</form>');
     const f=document.getElementById('ws-record');f.onsubmit=e=>{e.preventDefault();progress(f,async()=>{

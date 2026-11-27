@@ -1,4 +1,4 @@
-function whatsappPhoto(value) {
+export function whatsappPhoto(value) {
   if (!value) return null;
   try {
     const url = new URL(value);

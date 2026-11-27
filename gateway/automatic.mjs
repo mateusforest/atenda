@@ -63,7 +63,7 @@ export function automaticAgent({db,sessionId,gateway,execute,draft=cloudDraft}){
           if(previous){if(!previous.key_id)failure='Envio sem confirmação. Confira o histórico da conversa.';continue}
           const context=await execute({...args,op:'suggestContext',messageId:last.keyId});
           if(context.handoff)continue;
-          const answer=context.text?context:await draft(profile,context.context);
+          const answer=context.text?context:await draft({...profile,needsName:!!context.needsName},context.context);
           await execute({...args,op:'send',requestId,text:answer.text,expectedMessageId:last.keyId,autoRevision:row.revision});
         }catch(e){
           if(e.status===409)continue;

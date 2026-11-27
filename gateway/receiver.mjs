@@ -1,18 +1,20 @@
 import {createHash} from 'node:crypto';
 import {fault,privateJid,uuid} from '../lib/wa-transport.mjs';
-import {contactPhotos} from './contact-photos.mjs';
+import {contactPhotos,whatsappPhoto} from './contact-photos.mjs';
+import {acceptedHandoff,confirmedName} from './service-records.mjs';
 import {voiceService} from './voice.mjs';
 import {agentEngine} from './agents.mjs';
 import {trialReply} from '../lib/agent-profile.mjs';
 import {openingForGreeting,requestsTeam} from '../dist/agent-rules.mjs';
 import {incomingTime} from './automatic.mjs';
 
-export function receiver({db,gateway,session,sessionId,ownerEmail,official,automatic,draft=agentEngine(),voice=voiceService(db,sessionId)}){
+export function receiver({db,gateway,session,sessionId,ownerEmail,official,automatic,crmIssue=()=>'',draft=agentEngine(),voice=voiceService(db,sessionId)}){
   const photo=contactPhotos(gateway,session);
   db.exec(`pragma busy_timeout=3000;
   create table if not exists owner(session text primary key,user_id text not null);
   create table if not exists sends(id text primary key, digest text not null, key_id text);
-  create table if not exists team_handoffs(session text,jid text,message text,active integer,primary key(session,jid));`);
+  create table if not exists team_handoffs(session text,jid text,message text,active integer,primary key(session,jid));
+  create table if not exists service_chat(session text,jid text,name text,preview text,time integer,fromMe integer,primary key(session,jid));`);
   const teamState=jid=>db.prepare('select message,active from team_handoffs where session=? and jid=?').get(sessionId,jid);
   function verifyOwner(owner){
     if(!uuid.test(owner?.id)||owner.email!==ownerEmail.toLowerCase())throw fault(403,'Conta sem acesso a este canal.');
@@ -30,6 +32,23 @@ export function receiver({db,gateway,session,sessionId,ownerEmail,official,autom
       return {state:row?.status==='CONNECTED'?'connected':'offline'};
     }
     verifyOwner(cmd.owner);
+    if(cmd.op==='profile'){
+      const [p,s]=await Promise.all([gateway('profile/'+session),gateway('sessions/'+session)]);
+      const phone=String(s.me?.id||'').match(/^(\d+)(?::\d+)?@s\.whatsapp\.net$/)?.[1];
+      return {name:p.name||s.me?.name||'',number:phone?'+'+phone:'',about:typeof p.status==='string'?p.status:p.status?.status||'',photo:whatsappPhoto(p.pictureUrl),crmIssue:crmIssue()};
+    }
+    if(cmd.op==='editProfile'){
+      if(cmd.field==='picture'){
+        if(typeof cmd.value!=='string'||cmd.value.length>190000||!/^\/9j\/[A-Za-z0-9+/=]+$/.test(cmd.value))throw fault(400,'Envie uma foto JPEG válida.');
+        const form=new FormData();form.set('image',new Blob([Buffer.from(cmd.value,'base64')],{type:'image/jpeg'}),'perfil.jpg');
+        await gateway('profile/'+session+'/picture',form,'PUT');
+      }else{
+        const max={name:25,status:139}[cmd.field];
+        if(!['name','status'].includes(cmd.field)||typeof cmd.value!=='string'||!cmd.value.trim()||cmd.value.length>max)throw fault(400,'Confira o campo do perfil.');
+        await gateway('profile/'+session+'/'+cmd.field,{[cmd.field]:cmd.value.trim()},'PUT');
+      }
+      return {saved:true};
+    }
     if(cmd.op==='automatic'&&automatic)return automatic.configure(cmd);
     if(cmd.op==='official'&&official)return official.command(cmd.action);
     if(cmd.op==='trial') {
@@ -37,7 +56,12 @@ export function receiver({db,gateway,session,sessionId,ownerEmail,official,autom
     }
     if(cmd.op==='chats'){
       const scope=cmd.scope??'all', page=cmd.page??1;
-      if(!['all','waiting','answered'].includes(scope)||!Number.isSafeInteger(page)||page<1||page>100000)throw fault(400,'Filtro de conversas inválido.');
+      if(!['all','waiting','answered','team'].includes(scope)||!Number.isSafeInteger(page)||page<1||page>100000)throw fault(400,'Filtro de conversas inválido.');
+      if(scope==='team'){
+        const active=db.prepare('select h.jid,c.name,c.preview,c.time,c.fromMe from team_handoffs h left join service_chat c on c.session=h.session and c.jid=h.jid where h.session=? and h.active=1 order by c.time desc,h.rowid desc limit 51 offset ?').all(sessionId,(page-1)*50);
+        const chats=active.slice(0,50).map(item=>({...item,name:item.name||item.jid.split('@')[0],preview:item.preview||'Aguardando a equipe',fromMe:!!item.fromMe,photo:photo(item),withTeam:true}));
+        return {chats,more:active.length>50};
+      }
       const result=await gateway('chat/'+session+'?inbox='+scope+'&page='+page);
       const chats=result.chats.filter(r=>privateJid.test(r.jid)).map(r=>({
         jid:r.jid,name:excerpt(r.name||r.notify||r.jid.split('@')[0],120),photo:photo(r),
@@ -77,7 +101,8 @@ export function receiver({db,gateway,session,sessionId,ownerEmail,official,autom
             voice.start(cmd.jid,row);
             throw fault(409,'Aguarde a transcrição antes da resposta automática.');
           }
-          if(!requestsTeam(note?note.transcript:row.content,terms))continue;
+          const incoming=note?note.transcript:row.content;
+          if(!requestsTeam(incoming,terms)&&!acceptedHandoff(incoming,rows.slice(0,i).findLast(r=>r.fromMe)?.content))continue;
           db.prepare('insert or replace into team_handoffs values(?,?,?,1)').run(sessionId,cmd.jid,row.keyId);
           team=teamState(cmd.jid);
           break;
@@ -90,7 +115,8 @@ export function receiver({db,gateway,session,sessionId,ownerEmail,official,autom
         const context=rows.slice(-12).map(row=>({fromMe:row.fromMe,text:excerpt((row.type==='AUDIO'?voice.state(cmd.jid,row).transcript:row.content)||'[Mídia]',1600)}));
         const greeting=!rows.some(row=>row.fromMe)&&openingForGreeting(cmd.profile,context);
         if(greeting)return {text:greeting,model:'roteiro'};
-        return cmd.op==='suggestContext'?{context}:draft(cmd.profile,context);
+        const needsName=!!cmd.autoSince&&!confirmedName(context)&&!rows.some(r=>r.fromMe&&/(?:seu nome|se chama|prefere ser chamad[oa])/i.test(r.content||''));
+        return cmd.op==='suggestContext'?{context,...(needsName?{needsName:true}:{})}:draft(cmd.profile,context);
       }
       // Mantém a resposta dentro do limite de um broadcast mesmo com textos extensos.
       let size=0;const messages=[];

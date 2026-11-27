@@ -1,6 +1,8 @@
 import {DatabaseSync} from 'node:sqlite';
 import {receiver} from './receiver.mjs';
 import {automaticAgent} from './automatic.mjs';
+import {serviceRecords} from './service-records.mjs';
+import {voiceService} from './voice.mjs';
 import {officialSupport} from './official-support.mjs';
 import {dirname,join} from 'node:path';
 import {mkdirSync} from 'node:fs';
@@ -15,10 +17,11 @@ const session=encodeURIComponent(WA_AKG_SESSION);
 const filename=join(stateDir,'atendimento.sqlite');
 mkdirSync(dirname(filename),{recursive:true});
 const db=new DatabaseSync(filename);
-async function gateway(path,body){
-  const res=await fetch(new URL('/api/'+path,origin),{method:body?'POST':'GET',redirect:'error',
-    headers:{'X-API-Key':WA_AKG_API_KEY,'Content-Type':'application/json'},
-    body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(11000)});
+async function gateway(path,body,method=body?'POST':'GET'){
+  const multipart=body instanceof FormData;
+  const res=await fetch(new URL('/api/'+path,origin),{method,redirect:'error',
+    headers:{'X-API-Key':WA_AKG_API_KEY,...(multipart?{}:{'Content-Type':'application/json'})},
+    body:multipart?body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(11000)});
   if(!res.ok)throw Object.assign(fault(502,'O WA-AKG respondeu HTTP '+res.status+'.'),{gatewayStatus:res.status});
   const payload=await res.json();
   if(payload.status===false)throw fault(502,'O WA-AKG recusou a operação.');
@@ -26,7 +29,10 @@ async function gateway(path,body){
 }
 const official=officialSupport({db,gateway,clientSession:WA_AKG_SESSION});
 const automatic=automaticAgent({db,gateway,sessionId:WA_AKG_SESSION,execute:cmd=>execute(cmd)});
-const execute=receiver({db,gateway,session,sessionId:WA_AKG_SESSION,ownerEmail:WA_OWNER_EMAIL,official,automatic});
+const voice=voiceService(db,WA_AKG_SESSION);
+const execute=receiver({db,gateway,session,sessionId:WA_AKG_SESSION,ownerEmail:WA_OWNER_EMAIL,official,automatic,voice,crmIssue:()=>crm.issue()});
+const crm=serviceRecords({db,gateway,sessionId:WA_AKG_SESSION,voice});
+setInterval(()=>{void crm.sync()},12000).unref();
 setInterval(()=>{void automatic.tick()},5000).unref();
 setInterval(()=>{void official.tick()},12000).unref();
 

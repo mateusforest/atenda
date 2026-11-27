@@ -18,6 +18,11 @@
       const d=await api('overview&offset='+position);offset=d.offset;
       el('workspace').hidden=false;el('access').textContent='';el('account-message').textContent='';
       el('count').textContent=d.total+' '+(d.total===1?'conta':'contas');
+      el('m-accounts').textContent=d.total;
+      for(const metric of ['leads','team','tasks'])el('m-'+metric).textContent=d.metrics?.[metric]??'—';
+      el('billing-mode').textContent=d.environment==='sandbox'?'Homologação. Os meios de pagamento abaixo usam a configuração de testes.':'Produção. Os meios abaixo dependem do credenciamento da loja.';
+      el('pix-state').textContent='Pix Automático Sicredi · '+(d.billing?.pix?'Credenciais configuradas':'Aguardando credenciais');
+      el('card-state').textContent='Cartão Lyra · '+(d.billing?.card?'Credenciais configuradas':'Aguardando credenciais');
       el('billing-env').textContent=d.environment==='sandbox'?'Assinaturas em homologação.':'Assinaturas em produção.';
       const rows=el('accounts');rows.replaceChildren();
       for(const a of d.accounts){

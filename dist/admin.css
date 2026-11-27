@@ -14,3 +14,4 @@ button.light { border-color:#cbbdcb; background:transparent; }
   button:enabled:hover { transform:translateY(-2px); box-shadow:0 3px 0 #bda5c1; }
 }
 #key-form label{font-weight:600}#key-form .actions{margin-top:6px}#luna-key{flex:1;min-width:12em;max-width:32em;padding:10px 12px;font:inherit;border:1px solid #cbbcca;border-radius:8px}
+.admin-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-top:20px}.admin-metrics>div{padding:15px 18px;background:#f4eef5;border-radius:12px;color:#574157}.admin-metrics strong{display:block;font:500 2.1rem/1.35 Georgia,serif;color:#39283e}.section-head>a{color:#65416a;font-weight:600}

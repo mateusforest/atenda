@@ -202,3 +202,54 @@ class WhatsAppSessionIndicator extends HTMLElement {
   }
 }
 customElements.define('wa-session-indicator', WhatsAppSessionIndicator);
+
+class WhatsAppProfile extends HTMLElement {
+  connectedCallback(){
+    this.innerHTML='<div class="wa-profile"><img alt="Foto do número conectado" hidden referrerpolicy="no-referrer"><div><h2>Perfil do WhatsApp</h2><strong data-name></strong><p data-number></p><p data-about></p></div></div><div class="actions"><button class="btn light" data-edit disabled>Editar perfil</button><button class="link" data-refresh>Atualizar</button></div><output role="status"></output>';
+    this.querySelector('[data-edit]').onclick=()=>this.edit();
+    this.querySelector('[data-refresh]').onclick=()=>this.load();this.load();
+  }
+  async load(){
+    const output=this.querySelector('output');output.textContent='Consultando o perfil…';
+    try{
+      const p=await whatsappInboxRequest('?view=profile');if(!this.isConnected)return;this.profile=p;
+      const img=this.querySelector('img');img.hidden=!p.photo;if(p.photo)img.src=p.photo;else img.removeAttribute('src');
+      this.querySelector('[data-name]').textContent=p.name||'Nome indisponível';
+      this.querySelector('[data-number]').textContent=p.number||'Número indisponível';
+      this.querySelector('[data-about]').textContent=p.about||'Sem recado disponível.';
+      output.textContent=p.crmIssue||'';this.querySelector('[data-edit]').disabled=false;
+    }catch(e){output.textContent=e.message}
+  }
+  edit(){
+    modal('Editar perfil do WhatsApp','<form id="wa-profile-form" class="stack"><label class="field">Nome no WhatsApp<input name="name" maxlength="25"></label><label class="field">Recado<textarea name="about" maxlength="139"></textarea></label><label class="field">Nova foto<input name="photo" type="file" accept="image/jpeg,image/png,image/webp"></label><button class="btn">Salvar no WhatsApp</button><output role="status"></output></form>');
+    const f=document.getElementById('wa-profile-form');f.elements.name.value=this.profile.name;f.elements.about.value=this.profile.about;
+    f.onsubmit=async event=>{
+      event.preventDefault();const save=f.querySelector('button');if(save.disabled)return;save.disabled=true;
+      try{
+        const name=f.elements.name.value.trim(),about=f.elements.about.value.trim(),file=f.elements.photo.files[0];
+        if((name!==this.profile.name&&!name)||(about!==this.profile.about&&!about))throw Error('O WA-AKG exige texto para alterar nome ou recado.');
+        const photo=file?await profileJpeg(file):null;
+        for(const [field,value,previous] of [['name',name,this.profile.name],['status',about,this.profile.about],['picture',photo,null]]){
+          if(value===previous)continue;
+          await agentRequest('editProfile',{field,value});if(field==='status')this.profile.about=value;else if(field==='name')this.profile.name=value;
+        }
+        dialog.close();await this.load();
+      }catch(e){f.querySelector('output').textContent=e.message}finally{save.disabled=false}
+    };
+  }
+}
+async function profileJpeg(file){
+  if(file.size>8*1024*1024||!['image/jpeg','image/png','image/webp'].includes(file.type))throw Error('Escolha uma imagem JPG, PNG ou WebP de até 8 MB.');
+  const image=await createImageBitmap(file);
+  try{
+    const canvas=document.createElement('canvas');canvas.width=canvas.height=512;
+    const ctx=canvas.getContext('2d'),side=Math.min(image.width,image.height);
+    ctx.fillStyle='#fff';ctx.fillRect(0,0,512,512);
+    ctx.drawImage(image,(image.width-side)/2,(image.height-side)/2,side,side,0,0,512,512);
+    for(const quality of [.82,.65,.48]){
+      const value=canvas.toDataURL('image/jpeg',quality).split(',')[1];if(value.length<=190000)return value;
+    }
+    throw Error('A imagem ficou muito grande. Escolha outra foto.');
+  }finally{image.close()}
+}
+customElements.define('wa-account-profile',WhatsAppProfile);

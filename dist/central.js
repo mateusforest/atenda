@@ -213,7 +213,7 @@ function tryMember(id,roleKey){
  if(!handoff&&detail){trial.messages.push([1,detail]);draw();return}
  if(!handoff&&step<specialist.questions.length){trial.messages.push([1,specialist.questions[step++]]);draw();return}
  trial.messages.push([1,'Vou encaminhar seu atendimento para a equipe.']);trial.status=0;if(a.legacy){trial.trip=trial.messages.filter(m=>!m[0]).map(m=>m[1]).slice(0,5);trial.stage=0}
- data.threads.unshift(trial);save();inbox(0);openThread(trial.id)}}
+ data.threads.unshift(trial);save();go('agent');openThread(trial.id)}}
  if(a.legacy&&a.question===models[0][3])specialist.questions=questions;
  if(role)specialist.questions=[role.question,...specialist.questions.filter(q=>q!==role.question)];
  draw();
@@ -237,6 +237,7 @@ function go(p) {
   page = p;
   setMenu(false);
   render();
+  if(page==='panel')Empresa.init();
   window.scrollTo(0, 0);
 }
 Object.assign(paths, {
@@ -300,7 +301,7 @@ function home() {
 }
 
 function list(){const q=search.toLocaleLowerCase('pt-BR');const rows=data.threads.filter(t=>(filter<0||t.status===filter)&&t.name.toLocaleLowerCase('pt-BR').includes(q));document.querySelector('#rows').innerHTML=rows.map(contact).join('')||'<p class="muted">Nenhuma conversa encontrada.</p>'}
-function chats(){return title('Conversas','Abra um atendimento para consultar o histórico ou responder.')+'<section class="card stack pane"><whatsapp-inbox></whatsapp-inbox></section><section class="card pane"><h2>Conversas de teste</h2><input aria-label="Buscar contato" placeholder="Buscar contato" id="search" oninput="search=this.value;list()"><div class="tabs">'+['Todas',...states].map((n,i)=>'<button class="'+(filter===i-1?'sel':'')+'" onclick="inbox('+(i-1)+')">'+n+'</button>').join('')+'</div><div id="rows"></div></section>'}
+function chats(){return title('Conversas','Acompanhe os atendimentos do WhatsApp e responda aos clientes.')+'<section class="card stack pane"><whatsapp-inbox></whatsapp-inbox></section>'}
 function agent(){return '<button class="link" onclick="go(&quot;agent&quot;)">Equipe de agentes</button>'+title('Configurar agente','Personalize e teste a primeira conversa com um viajante.')+'<form id="agentForm" class="card stack pane" style="max-width:720px"><label class="field">Nome do agente<input name="name" maxlength="64" required value="'+esc(data.name)+'"></label><label class="field">Mensagem de boas-vindas<textarea name="greeting" maxlength="500" required>'+esc(data.greeting)+'</textarea></label><label><input name="enabled" type="checkbox" style="width:auto" '+(data.enabled?'checked':'')+'> Ativar agente de teste</label><div><button class="btn">Salvar ajustes</button> <button type="button" class="btn light" onclick="startTest()">Testar conversa</button></div><span class="msg" id="notice" role="status"></span></form>'}
 
 const tripFields=['Destino','Datas','Origem','Passageiros','Orçamento'];
@@ -333,10 +334,10 @@ function replySetup(){
 }
 function channel(){
  return title('WhatsApp','Acompanhe a conexão do número usado nos atendimentos.')+
-   '<section class="card stack pane"><h2>Conexão do número</h2><wa-session-indicator></wa-session-indicator></section><wa-automatic-replies class="card stack pane"></wa-automatic-replies>';
+   '<section class="card stack pane"><h2>Conexão do número</h2><wa-session-indicator></wa-session-indicator></section><wa-account-profile class="card stack pane"></wa-account-profile><wa-automatic-replies class="card stack pane"></wa-automatic-replies>';
 }
 document.addEventListener('atenda-reply-setup',replySetup);
-function render(){document.querySelector(".bar strong").textContent=Empresa.company||data.workspace;document.querySelector(".bar .badge").textContent=Empresa.privatePage?(Empresa.logged?"Área privada":"Acesso por conta"):(["home","chat","channel"].includes(page)?"Atendimento":"Demonstração");nav();document.querySelector('#app').innerHTML=({home,chat:chats,agent:teamPage,setup:agent,channel,quotes,settings:Empresa.settings,integrations:Empresa.integrations,panel:Empresa.panel})[page]();if(page==='chat'){document.querySelector('#search').value=search;list()}if(page==='setup')agentForm.onsubmit=e=>{e.preventDefault();const f=new FormData(e.target),name=f.get('name').trim(),greeting=f.get('greeting').trim();if(!name||!greeting){notice.textContent='Preencha os dois campos.';return}Object.assign(data,{name,greeting,enabled:f.has('enabled')});save();notice.textContent='Ajustes salvos.'}}
+function render(){document.querySelector(".bar strong").textContent=Empresa.company||data.workspace;document.querySelector(".bar .badge").textContent=Empresa.privatePage?(Empresa.logged?"Área privada":"Acesso por conta"):(["home","chat","channel"].includes(page)?"Atendimento":"Demonstração");nav();document.querySelector('#app').innerHTML=({home,chat:chats,agent:teamPage,setup:agent,channel,quotes,settings:Empresa.settings,integrations:Empresa.integrations,panel:Empresa.panel})[page]();if(page==='setup')agentForm.onsubmit=e=>{e.preventDefault();const f=new FormData(e.target),name=f.get('name').trim(),greeting=f.get('greeting').trim();if(!name||!greeting){notice.textContent='Preencha os dois campos.';return}Object.assign(data,{name,greeting,enabled:f.has('enabled')});save();notice.textContent='Ajustes salvos.'}}
 function modal(title,html){dt.textContent=title;dc.innerHTML=html;if(!dialog.open)dialog.showModal();const b=dc.querySelector('.bubbles');if(b)b.scrollTop=b.scrollHeight}
 function bubbles(t){return '<div class="bubbles">'+t.messages.map(([out,msg])=>'<div class="bubble '+(out?'out':'')+'">'+esc(msg)+'</div>').join('')+'</div>'}
 function openThread(id){current=id;const t=data.threads.find(x=>x.id===id);modal(t.name,badge(t.status)+(t.agentName?' <span class="badge">'+esc(t.agentName)+'</span>':'')+(t.trip?'<button class="link" onclick="editQuote('+id+')">Ficha da viagem</button>':'')+bubbles(t)+(t.status===2?'<form class="compose" id="compose"><input name="text" maxlength="2000" required aria-label="Sua resposta" placeholder="Escreva uma resposta…"><button class="btn">Enviar</button></form><p style="margin-top:12px"><button class="link" onclick="statusTo(3)">Concluir atendimento</button></p>':'<button class="btn" onclick="statusTo(2)">'+(t.status===3?'Reabrir conversa':'Assumir atendimento')+'</button>'));const form=dc.querySelector('form');if(form)form.onsubmit=e=>{e.preventDefault();const v=form.elements.text.value.trim();if(v){t.messages.push([1,v]);save();render();openThread(id)}}}
@@ -344,8 +345,8 @@ function statusTo(s){data.threads.find(x=>x.id===current).status=s;save();render
 const questions=['Quais são as datas previstas para a viagem?','De qual cidade vocês vão sair?','Quantos adultos e crianças vão viajar?','Qual orçamento aproximado você gostaria de considerar?'];
 let trial,step,specialist;
 function startTest(id){specialist=catalog.find(a=>a.id===id);if(specialist&&!data.extras[id]?.active)return;if(!specialist&&!data.enabled){notice.textContent='Ative o agente e salve para testar.';return}trial={id:Math.max(...data.threads.map(t=>t.id))+1,name:'Viajante de teste',status:1,agentName:specialist?.name||data.name,messages:[[1,specialist?.welcome||data.greeting]]};step=0;testView()}
-function testView(){modal(trial.agentName,bubbles(trial)+'<form class="compose" id="testform"><input required maxlength="500" name="text" placeholder="Responda como viajante" aria-label="Resposta do viajante"><button class="btn">Enviar</button></form>');testform.onsubmit=e=>{e.preventDefault();const v=testform.elements.text.value.trim();if(!v)return;trial.messages.push([0,v]);const script=specialist?.questions||questions;if(step===script.length||/\b(humano|atendente|consultor)\b/i.test(v)){trial.messages.push([1,'Vou encaminhar seu atendimento para um consultor da agência.']);if(!specialist){trial.trip=trial.messages.filter(([out])=>!out).map(([,msg])=>msg);if(/\b(humano|atendente|consultor)\b/i.test(v))trial.trip.pop();trial.stage=0}trial.status=0;data.threads.unshift(trial);save();inbox(0);openThread(trial.id);return}trial.messages.push([1,script[step++]]);testView()}}
-render();Empresa.init();
+function testView(){modal(trial.agentName,bubbles(trial)+'<form class="compose" id="testform"><input required maxlength="500" name="text" placeholder="Responda como viajante" aria-label="Resposta do viajante"><button class="btn">Enviar</button></form>');testform.onsubmit=e=>{e.preventDefault();const v=testform.elements.text.value.trim();if(!v)return;trial.messages.push([0,v]);const script=specialist?.questions||questions;if(step===script.length||/\b(humano|atendente|consultor)\b/i.test(v)){trial.messages.push([1,'Vou encaminhar seu atendimento para um consultor da agência.']);if(!specialist){trial.trip=trial.messages.filter(([out])=>!out).map(([,msg])=>msg);if(/\b(humano|atendente|consultor)\b/i.test(v))trial.trip.pop();trial.stage=0}trial.status=0;data.threads.unshift(trial);save();go('agent');openThread(trial.id);return}trial.messages.push([1,script[step++]]);testView()}}
+if(location.hash==='#assinatura')go('billing');else render();Empresa.init();
 
 ;
 (()=>{

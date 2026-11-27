@@ -300,3 +300,4 @@ whatsapp-overview .stat strong { font: 400 clamp(33px,3.3vw,52px)/1 var(--serif)
 .team-first { flex-wrap: wrap; }
 .team-first > div { flex: 1; min-width: 0; }
 .team-first .tag { background: #fff8fb; color: #57455e; font-size: 12px; }
+.wa-profile{display:flex;align-items:center;gap:1.25rem}.wa-profile img{width:76px;height:76px;border-radius:50%;object-fit:cover}.wa-profile p{margin:.25em 0}.wa-profile strong{display:block;margin-top:.5rem}

@@ -4,6 +4,7 @@ import {dashboard,jobs,acknowledge,registerAccount,phoneNumber} from '../lib/adm
 import {isWorker} from '../lib/official-channel.mjs';
 import {saveLunaKey,lunaKey} from '../lib/luna-key.mjs';
 import {lunaReply} from '../lib/luna.mjs';
+import {persistService} from '../lib/whatsapp-crm.mjs';
 
 async function signup(body){
   const email=typeof body.email==='string'?body.email.trim():'',password=body.password;
@@ -28,6 +29,10 @@ export default async function admin(req,res){
     const params=new URL(req.url,'https://atenda.local').searchParams,action=params.get('action')||'overview';
     const body=typeof req.body==='string'?JSON.parse(req.body):req.body||{};
     if(action==='signup'&&req.method==='POST')return send(200,await signup(body));
+    if(action==='service-record'&&req.method==='POST'){
+      if(!isWorker(req.headers.authorization,'atenda-crm-v1'))throw fault(401,'Acesso restrito.');
+      await persistService(body.owner,body.event);return send(200,{saved:true});
+    }
     if(action==='auto-reply'&&req.method==='POST'){
       if(!isWorker(req.headers.authorization,'atenda-luna-autoreply-v1'))throw fault(401,'Acesso restrito.');
       return send(200,await lunaReply(body.profile,body.history,{key:await lunaKey()}));

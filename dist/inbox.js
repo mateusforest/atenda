@@ -114,7 +114,7 @@ class WhatsAppInbox extends HTMLElement {
     this.selected=null;
     this.innerHTML = `
       <div class="wa-toolbar"><h2>WhatsApp</h2><select aria-label="Filtrar conversas do WhatsApp">
-        <option value="all">Todas as conversas</option><option value="waiting">Aguardando resposta</option><option value="answered">Respondidas</option></select><label class="wa-search">
+        <option value="all">Todas as conversas</option><option value="waiting">Aguardando resposta</option><option value="answered">Respondidas</option><option value="team">Com a equipe</option></select><label class="wa-search">
         <svg class="ico" aria-hidden="true" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
         <input type="search" aria-label="Buscar conversa no WhatsApp" placeholder="Buscar nome ou número">
       </label></div>
