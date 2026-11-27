@@ -27,6 +27,7 @@ http.createServer(async(req,res)=>{
  const pages=new Map([['/','index.html'],['/index.html','index.html'],['/portal','portal.html'],['/portal/','portal.html'],['/portal.html','portal.html'],['/login','acesso.html'],['/cadastro','acesso.html'],['/conta.js','conta.js'],['/central.js','central.js'],['/portal-acesso.js','portal-acesso.js'],['/empresa.js','empresa.js'],['/empresa.css','empresa.css'],['/dot.png','dot.png'],['/dot-motion.js','dot-motion.js']]);
  pages.set('/whatsapp','whatsapp.html');
  pages.set('/inbox.js','inbox.js');
+ pages.set('/portal-ui.css','portal-ui.css');
  pages.set('/whatsapp-channel.js','whatsapp-channel.js');
  const localPortal=['/portal','/portal/','/portal.html'].includes(path) && !process.env.SUPABASE_URL;
  const asset=localPortal?'whatsapp.html':pages.get(path);

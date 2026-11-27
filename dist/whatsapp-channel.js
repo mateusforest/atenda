@@ -80,3 +80,80 @@ class AtendaWhatsApp extends HTMLElement {
   }
 }
 customElements.define('atenda-whatsapp', AtendaWhatsApp);
+
+// A navegação e o cartão do canal compartilham a consulta autenticada.
+const accountChannel = (() => {
+  const subscribers = new Set();
+  let snapshot = {state:'checking'}, timer, pending, checkedAt = 0;
+  async function refresh() {
+    clearTimeout(timer);
+    if (pending || document.hidden || !subscribers.size) return;
+    pending = true;
+    try {
+      const result = await whatsappInboxRequest('?view=status', {signal:AbortSignal.timeout(30000)});
+      snapshot = {state:result.state};
+    } catch (error) {
+      snapshot = {state:'unknown', message:error.message};
+    } finally {
+      pending = false;
+      checkedAt = Date.now();
+      for (const subscriber of subscribers) subscriber.paint(snapshot);
+      if (subscribers.size && !document.hidden) timer = setTimeout(refresh, 30000);
+    }
+  }
+  document.addEventListener('visibilitychange', () => document.hidden ? clearTimeout(timer) : refresh());
+  return {
+    subscribe(view) {
+      const first = !subscribers.size;
+      subscribers.add(view);
+      view.paint(snapshot);
+      if (first && !pending) timer = setTimeout(refresh, Math.max(0, checkedAt + 30000 - Date.now()));
+    },
+    remove(view) {
+      subscribers.delete(view);
+      if (!subscribers.size) {clearTimeout(timer); timer = null;}
+    },
+    refresh
+  };
+})();
+class WhatsAppSessionIndicator extends HTMLElement {
+  connectedCallback() {accountChannel.subscribe(this);}
+  disconnectedCallback() {accountChannel.remove(this);}
+  paint({state, message}) {
+    const info = {
+      checking:['Verificando', 'Consultando a conexão do número.'],
+      connected:['Ativo', 'Número conectado ao WhatsApp.'],
+      offline:['Inativo', 'O número está desconectado do WhatsApp.'],
+      unknown:['Indisponível', message || 'Não foi possível confirmar a conexão.']
+    };
+    if (!Object.hasOwn(info, state)) state = 'unknown';
+    const [label, detail] = info[state];
+    if (this.dataset.state === state && this.title === detail) return;
+    this.dataset.state = state;
+    this.title = detail;
+    const badge = document.createElement('span');
+    badge.className = 'session-badge';
+    const mark = document.createElement('span');
+    mark.className = 'session-mark';
+    mark.setAttribute('aria-hidden','true');
+    mark.textContent = {connected:'✓',offline:'−',checking:'·',unknown:'?'}[state];
+    const name = document.createElement('span');
+    name.textContent = label;
+    if (this.hasAttribute('compact')) name.className = 'visually-hidden';
+    badge.append(mark, name);
+    this.replaceChildren(badge);
+    if (this.hasAttribute('compact')) return;
+    const description = document.createElement('p');
+    description.className = 'muted';
+    description.textContent = detail;
+    this.append(description);
+    if (state !== 'checking') {
+      const button = document.createElement('button');
+      button.className = state === 'connected' ? 'btn' : 'btn light';
+      button.textContent = state === 'connected' ? 'Abrir conversas' : 'Consultar novamente';
+      button.onclick = state === 'connected' ? () => go('chat') : accountChannel.refresh;
+      this.append(button);
+    }
+  }
+}
+customElements.define('wa-session-indicator', WhatsAppSessionIndicator);
