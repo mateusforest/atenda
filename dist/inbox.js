@@ -31,7 +31,8 @@ function agentRequest(op,fields,signal) {
 }
 function agentProfile(agent){
   const keys=['name','goal','greeting','question','tone','pace','knowledge','handoff'];
-  return {...Object.fromEntries(keys.map(key=>[key,String(agent[key]||'').slice(0,2000)])),guidelines:Empresa.guidelines};
+  return {...Object.fromEntries(keys.map(key=>[key,String(agent[key]||'').slice(0,2000)])),guidelines:Empresa.guidelines,
+    functions:memberRoles(agent).map(r=>({name:r.label,goal:models[r.model][1],question:r.question}))};
 }
 function contactAvatar(item) {
   const name = item.name || item.jid.split('@')[0];
@@ -120,7 +121,7 @@ class WhatsAppInbox extends HTMLElement {
       <div class="wa-paging" hidden><button type="button" class="link">Anterior</button><button type="button" class="link">Próxima</button></div>
       <section class="wa-history" hidden><button type="button" class="link">‹ Voltar às conversas</button>
         <h3 tabindex="-1"></h3><div class="bubbles" aria-label="Histórico" tabindex="0"></div>
-        <div class="wa-toolbar wa-agent"><select aria-label="Agente da sugestão"></select><button type="button" class="btn light">Sugerir resposta</button></div>
+        <div class="wa-toolbar wa-agent"><label class="field">Agente da sugestão<select></select></label><button type="button" class="btn light">Sugerir resposta</button></div>
         <form class="compose"><input aria-label="Sua resposta no WhatsApp" placeholder="Escreva uma resposta…" maxlength="4000" required autocomplete="off"><button class="btn">Enviar</button></form>
         <output role="status"></output></section>`;
     this.search = this.querySelector('[type=search]');
@@ -141,6 +142,9 @@ class WhatsAppInbox extends HTMLElement {
     this.agents=this.querySelector('.wa-agent select');
     this.suggest=this.querySelector('.wa-agent button');
     for(const a of data.team.filter(a=>a.licensed&&!a.paused))this.agents.add(new Option(a.name,a.id));
+    this.agents.onchange=()=>{
+      if(this.selected)sessionStorage.setItem(this.agentChoiceKey(this.selected),this.agents.value);
+    };
     this.suggest.onclick=()=>this.suggestReply();
     this.pane.querySelector('button').onclick=()=>this.select(null);
     this.form.onsubmit=e=>{e.preventDefault();this.reply()};
@@ -149,6 +153,7 @@ class WhatsAppInbox extends HTMLElement {
     this.select(null);
   }
   disconnectedCallback(){clearTimeout(this.timer);this.request?.abort();this.releaseChat()}
+  agentChoiceKey(chat){return 'atenda.agente.'+AtendaAuth.user.id+'.'+chat.jid}
   releaseChat(){
     this.actions?.abort();
     for(const url of this.mediaUrls||[])URL.revokeObjectURL(url);
@@ -174,6 +179,10 @@ class WhatsAppInbox extends HTMLElement {
     this.previous=null;
     this.status.textContent='Carregando…';
     if(chat){
+      const saved=sessionStorage.getItem(this.agentChoiceKey(chat));
+      const options=Array.from(this.agents.options);
+      this.agents.value=options.find(o=>o.value===saved)?.value||options[0]?.value||'';
+      this.agents.disabled=!options.length;
       this.pane.querySelector('h3').replaceChildren(contactAvatar(chat),document.createTextNode(chat.name));
       this.pane.querySelector('h3').focus({preventScroll:true});
       this.pane.querySelector('.bubbles').replaceChildren();
@@ -285,14 +294,14 @@ class WhatsAppInbox extends HTMLElement {
     if(!a||!latest||this.suggest.disabled)return;
     const output=this.pane.querySelector('output');
     if(this.input.value.trim()){output.textContent='Guarde ou limpe seu rascunho antes de pedir uma sugestão.';return}
-    this.generating=true;this.suggest.disabled=true;output.textContent='Preparando sugestão…';
+    this.generating=true;this.suggest.disabled=true;this.agents.disabled=true;output.textContent='Preparando sugestão…';
     try{
       const result=await agentRequest('suggest',{jid:this.selected.jid,messageId:latest.id,profile:agentProfile(a)},signal);
       if(signal.aborted)return;
       if(this.input.value||latest.id!==this.latest?.id){output.textContent='A conversa ou o rascunho mudou. Confira antes de pedir outra sugestão.';return}
       this.input.value=result.text;output.textContent=(result.model==='gpt-6-luna'?'Luna':'Motor local')+' · Sugestão pronta para revisar e enviar.';this.input.focus();
     }catch(e){if(!signal.aborted)output.textContent=e.message}
-    finally{if(!signal.aborted){this.generating=false;this.refresh()}}
+    finally{if(!signal.aborted){this.generating=false;this.agents.disabled=false;this.refresh()}}
   }
   async reply(){
     const chat=this.selected,text=this.input.value.trim(),button=this.form.querySelector('button');

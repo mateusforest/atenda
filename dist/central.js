@@ -47,8 +47,29 @@ const models=[
  ['Comercial','Qualifica oportunidades para a equipe de vendas.','Qual produto ou serviço despertou seu interesse?','Qual é o prazo e a faixa de investimento?'],
  ['Suporte','Organiza o problema antes de acionar a equipe.','O que aconteceu?','Quando o problema começou e o que você já tentou?'],
  ['Pós-venda','Acompanha a experiência após a compra.','Como foi sua experiência?','O que poderíamos melhorar?'],
- ['Personalizado','Defina o objetivo e escreva o roteiro do agente.','Como posso ajudar?','O que você gostaria de acrescentar?']
+ ['Personalizado','Combine funções em um agente que acompanha toda a conversa.','Como posso ajudar?','O que você gostaria de acrescentar?']
 ];
+const serviceRoles=[
+ {key:'atendimento',label:'Atendimento',model:0},
+ {key:'suporte',label:'Suporte',model:3},
+ {key:'consultoria',label:'Consultoria',model:1},
+ {key:'comercial',label:'Comercial',model:2},
+ {key:'pos-venda',label:'Pós-venda',model:4}
+];
+function memberRoles(agent){
+ return serviceRoles.filter(role=>Object.hasOwn(agent.functions||{},role.key)).map(role=>({
+   ...role,question:agent.functions[role.key]||models[role.model][3]
+ }));
+}
+function roleEditor(agent){
+ const current=memberRoles(agent);
+ const choices=serviceRoles.map(role=>{
+   const saved=current.find(r=>r.key===role.key);
+   return '<div class="member-function"><label><input type="checkbox" name="role" value="'+role.key+'" '+(saved?'checked':'')+'> '+role.label+'</label>'+
+    '<label class="field" '+(saved?'':'hidden')+'>Pergunta inicial de '+role.label.toLowerCase()+'<input name="role-'+role.key+'" maxlength="240" value="'+esc(saved?.question||models[role.model][3])+'"></label></div>';
+ }).join('');
+ return '<fieldset class="member-functions"><legend>Funções deste agente</legend><p class="muted">Escolha as funções que ele pode assumir na mesma conversa. Todas contam como um só agente no plano.</p>'+choices+'</fieldset>';
+}
 const money=v=>'R$ '+Number(v).toLocaleString('pt-BR');
 const oldWorkspace=Boolean(localStorage.getItem(localDataKey));
 function makeAgent(model,first=false){
@@ -89,22 +110,37 @@ function testAgentAI(id){
  };
 }
 function teamPage(){
- return '<div class="heading"><div>'+title('Minha equipe','Configure os agentes que atendem pela sua empresa.')+'</div>'+action('Adicionar agente','chooseModel()','')+'</div><div class="catalog pane">'+data.team.map(a=>'<article class="special"><div class="row"><span class="tile">'+icon('agent')+'</span><span class="tag '+(a.licensed&&!a.paused?'bot':'')+'">'+(a.licensed?(a.paused?'Pausado':'Ativo em teste'):'Rascunho')+'</span></div><small>'+models[a.model][0]+'</small><h2>'+esc(a.name)+'</h2><p>'+esc(a.goal)+'</p><div class="actions">'+action('Configurar',cmd('configure',a.id))+action('Testar roteiro',cmd('tryMember',a.id))+action('Testar IA',cmd('testAgentAI',a.id))+(a.licensed?action(a.paused?'Retomar':'Pausar',cmd('toggleMember',a.id)):action('Ativar',cmd('activateDialog',a.id),''))+'</div></article>').join('')+'</div>';
+ return '<div class="heading"><div>'+title('Minha equipe','Os agentes compartilham o WhatsApp conectado à empresa. Em Conversas, escolha quem prepara a sugestão e revise antes de enviar.')+'</div>'+action('Adicionar agente','chooseModel()','')+'</div><div class="catalog pane">'+data.team.map(a=>'<article class="special"><div class="row"><span class="tile">'+icon('agent')+'</span><span class="tag '+(a.licensed&&!a.paused?'bot':'')+'">'+(a.licensed?(a.paused?'Pausado':'Ativo em teste'):'Rascunho')+'</span></div><small>'+models[a.model][0]+'</small><h2>'+esc(a.name)+'</h2><p>'+esc(a.goal)+'</p>'+(memberRoles(a).length?'<p class="member-role-summary">'+memberRoles(a).map(r=>r.label).join(' · ')+'</p>':'')+'<div class="actions">'+action('Configurar',cmd('configure',a.id))+action('Testar roteiro',cmd('tryMember',a.id))+action('Testar IA',cmd('testAgentAI',a.id))+(a.licensed?action(a.paused?'Retomar':'Pausar',cmd('toggleMember',a.id)):action('Ativar',cmd('activateDialog',a.id),''))+'</div></article>').join('')+'</div>';
 }
 function chooseModel(){modal('Adicionar agente','<div class="options">'+models.map((m,i)=>'<button class="option" onclick="newDraft('+i+')"><b>'+m[0]+'</b><small>'+m[1]+'</small></button>').join('')+'</div>')}
-function newDraft(i){const a=makeAgent(i);data.team.push(a);save();dialog.close();go('agent');configure(a.id)}
+function newDraft(i){const a=makeAgent(i);if(i===5)a.functions=Object.fromEntries(serviceRoles.slice(0,3).map(r=>[r.key,models[r.model][3]]));data.team.push(a);save();dialog.close();go('agent');configure(a.id)}
 function field(label,key,value,area=false){return '<label class="field">'+label+(area?'<textarea name="'+key+'" maxlength="2000">'+esc(value)+'</textarea>':'<input name="'+key+'" value="'+esc(value)+'" maxlength="240" required>')+'</label>'}
 function select(label,key,values,current){return '<label class="field">'+label+'<select name="'+key+'">'+values.map(v=>'<option '+(v===current?'selected':'')+'>'+v+'</option>').join('')+'</select></label>'}
 function phrasing(tone,pace,line){const prefix={Humanizado:'Estou aqui para ajudar. ',Profissional:'Olá. ',Firme:'Vamos ao ponto. '};return prefix[tone]+(pace==='Calmo'?'Vamos por partes. ':'')+line}
 function configure(id){
- const a=findMember(id);modal('Configurar agente','<form id="memberForm" class="stack">'+field('Nome','name',a.name)+field('Objetivo','goal',a.goal)+field('Abertura da conversa','greeting',a.greeting)+field('Perguntas seguintes · uma por linha','question',a.question,true)+select('Tom de voz','tone',['Humanizado','Profissional','Firme'],a.tone)+select('Ritmo','pace',['Direto','Calmo'],a.pace)+'<output class="preview" id="sample"></output>'+field('Informações da empresa para o atendimento','knowledge',a.knowledge,true)+field('Encaminhar para a equipe ao mencionar · separe por vírgulas','handoff',a.handoff,true)+'<button class="btn">Salvar configuração</button></form>');
- const form=document.querySelector('#memberForm');const sample=()=>document.querySelector('#sample').textContent=phrasing(form.elements.tone.value,form.elements.pace.value,form.elements.greeting.value);sample();form.oninput=sample;form.onsubmit=e=>{e.preventDefault();const v=Object.fromEntries(new FormData(form));if(['name','goal','greeting'].some(k=>!v[k].trim()))return;Object.assign(a,v);save();dialog.close();go('agent')};
+ const a=findMember(id);modal('Configurar agente','<form id="memberForm" class="stack">'+field('Nome','name',a.name)+field('Objetivo','goal',a.goal)+roleEditor(a)+field('Abertura da conversa','greeting',a.greeting)+field('Perguntas seguintes · uma por linha','question',a.question,true)+select('Tom de voz','tone',['Humanizado','Profissional','Firme'],a.tone)+select('Ritmo','pace',['Direto','Calmo'],a.pace)+'<output class="preview" id="sample"></output>'+field('Informações da empresa para o atendimento','knowledge',a.knowledge,true)+field('Encaminhar para a equipe ao mencionar · separe por vírgulas','handoff',a.handoff,true)+'<button class="btn">Salvar configuração</button></form>');
+ const form=document.querySelector('#memberForm');const sample=()=>document.querySelector('#sample').textContent=phrasing(form.elements.tone.value,form.elements.pace.value,form.elements.greeting.value);sample();form.oninput=sample;
+ form.onchange=e=>{if(e.target.name==='role')e.target.closest('.member-function').querySelector('.field').hidden=!e.target.checked};
+ form.onsubmit=e=>{e.preventDefault();const values=new FormData(form);
+ const v=Object.fromEntries(['name','goal','greeting','question','tone','pace','knowledge','handoff'].map(k=>[k,values.get(k)]));
+ if(['name','goal','greeting'].some(k=>!v[k].trim()))return;
+ v.functions=Object.fromEntries(values.getAll('role').map(key=>[key,values.get('role-'+key).trim()]));
+ Object.assign(a,v);save();dialog.close();go('agent')};
 }
 function toggleMember(id){const a=findMember(id);if(a.licensed){a.paused=!a.paused;save();render()}}
-function activateDialog(id){const a=findMember(id);if(a.licensed)return;modal('Ativar '+a.name,'<div class="stack"><p>Agente adicional · R$ 190/mês</p><div class="listrow">Mensalidade atual<b>'+money(monthly())+'</b></div><div class="listrow">Após a ativação<b>'+money(monthly(data.team.filter(x=>x.licensed).length+1))+'/mês</b></div><p class="muted">Simulação local de assinatura. Nenhum pagamento será processado.</p>'+action('Confirmar ativação de teste',cmd('licenseMember',id),'')+'</div>')}
+function activateDialog(id){const a=findMember(id);if(a.licensed)return;modal('Ativar '+a.name,'<div class="stack"><p>Agente adicional no mesmo WhatsApp · R$ 190/mês</p><div class="listrow">Mensalidade atual<b>'+money(monthly())+'</b></div><div class="listrow">Após a ativação<b>'+money(monthly(data.team.filter(x=>x.licensed).length+1))+'/mês</b></div><p class="muted">Simulação local de assinatura. Nenhum pagamento será processado.</p>'+action('Confirmar ativação de teste',cmd('licenseMember',id),'')+'</div>')}
 function licenseMember(id){const a=findMember(id);a.licensed=true;a.paused=false;save();dialog.close();go('agent')}
-function tryMember(id){
- const a=findMember(id);specialist={name:a.name,questions:a.question.split('\n').map(x=>x.trim()).filter(Boolean)};
+function tryMember(id,roleKey){
+ const a=findMember(id),roles=memberRoles(a),role=roles.find(r=>r.key===roleKey);
+ if(roles.length&&!role){
+   modal('Testar roteiro · '+a.name,'<p class="sub">Escolha a função que quer testar.</p><div class="options"></div>');
+   const options=dc.querySelector('.options');
+   for(const r of roles){
+     const button=document.createElement('button');button.type='button';button.className='option';button.textContent=r.label;button.onclick=()=>tryMember(id,r.key);options.append(button);
+   }
+   return;
+ }
+ specialist={name:a.name,questions:a.question.split('\n').map(x=>x.trim()).filter(Boolean)};
  trial={id:Math.max(0,...data.threads.map(t=>t.id))+1,name:'Contato de teste',status:1,agentName:a.name,messages:[[1,phrasing(a.tone,a.pace,a.greeting)]]};step=0;
  function draw(){Empresa.bindTrial(draw);modal(a.name,(Empresa.guidelines?'<details><summary>Orientações internas</summary><p>'+esc(Empresa.guidelines)+'</p></details>':'')+Empresa.agentTools(a)+bubbles(trial)+'<form id="trialForm" class="compose"><input name="message" aria-label="Resposta de teste" maxlength="500" required><button class="btn">Enviar</button></form>');document.querySelector('#trialForm').onsubmit=e=>{e.preventDefault();const msg=e.target.elements.message.value.trim();if(!msg)return;trial.messages.push([0,msg]);const words=['humano','atendente humano',...a.handoff.toLowerCase().split(',').map(x=>x.trim()).filter(Boolean)];const handoff=words.some(w=>msg.toLowerCase().includes(w));
  if(!handoff&&Empresa.allowed(a.id).length&&/^(buscar|consultar|cadastrar)\b/i.test(msg)){Empresa.runForm('',a.id,msg.replace(/^\S+\s*/,''),draw,/^cadastrar/i.test(msg)?'write':'read');return}
@@ -113,10 +149,12 @@ function tryMember(id){
  if(!handoff&&step<specialist.questions.length){trial.messages.push([1,specialist.questions[step++]]);draw();return}
  trial.messages.push([1,'Vou encaminhar seu atendimento para a equipe.']);trial.status=0;if(a.legacy){trial.trip=trial.messages.filter(m=>!m[0]).map(m=>m[1]).slice(0,5);trial.stage=0}
  data.threads.unshift(trial);save();inbox(0);openThread(trial.id)}}
- if(a.legacy&&a.question===models[0][3])specialist.questions=questions;draw();
+ if(a.legacy&&a.question===models[0][3])specialist.questions=questions;
+ if(role)specialist.questions=[role.question,...specialist.questions.filter(q=>q!==role.question)];
+ draw();
 }
 function subscription(){const n=data.team.filter(a=>a.licensed).length;
- return title('Assinatura','Contrate e acompanhe a mensalidade da sua conta.')+'<atenda-subscription></atenda-subscription>'+ '<div class="grid pane"><section class="card stack"><h2>Simulador de equipe</h2><div class="price">'+money(monthly())+'<small> / mês</small></div><div class="listrow">Portal, 1 número e 1 agente<b>R$ 490</b></div><div class="listrow">'+(n-1)+' adicionais × R$ 190<b>'+money((n-1)*190)+'</b></div><p class="muted">Pausar mantém o agente na assinatura simulada. Rascunhos são gratuitos.</p>'+action('Gerenciar agentes',"go(&quot;agent&quot;)")+data.team.filter((a,i)=>i&&a.licensed).map(a=>action('Remover '+esc(a.name)+' do plano',cmd('removeDialog',a.id))).join('')+'</section><section class="card stack"><span class="tile">'+icon('support')+'</span><h2>Projeto personalizado</h2><p>Implantação a partir de <b>R$ 3.900</b> para até dois agentes, além da mensalidade.</p><p class="muted">Inclui configuração, testes, treinamento e 30 dias de acompanhamento. Equipes maiores e integrações recebem orçamento por escopo.</p>'+action(data.project?'Ver solicitação':'Solicitar implantação','projectDialog()','')+'</section></div>'}
+ return title('Assinatura','Contrate e acompanhe a mensalidade da sua conta.')+'<atenda-subscription></atenda-subscription>'+ '<div class="grid pane"><section class="card stack"><h2>Simulador de equipe</h2><div class="price">'+money(monthly())+'<small> / mês</small></div><div class="listrow">Portal, 1 número e 1 agente<b>R$ 490</b></div><div class="listrow">'+(n-1)+' adicionais × R$ 190<b>'+money((n-1)*190)+'</b></div><p class="muted">Várias funções no mesmo agente contam uma vez. Pausar mantém o agente na assinatura simulada. Rascunhos são gratuitos.</p>'+action('Gerenciar agentes',"go(&quot;agent&quot;)")+data.team.filter((a,i)=>i&&a.licensed).map(a=>action('Remover '+esc(a.name)+' do plano',cmd('removeDialog',a.id))).join('')+'</section><section class="card stack"><span class="tile">'+icon('support')+'</span><h2>Projeto personalizado</h2><p>Implantação a partir de <b>R$ 3.900</b> para até dois agentes, além da mensalidade.</p><p class="muted">Inclui configuração, testes, treinamento e 30 dias de acompanhamento. Equipes maiores e integrações recebem orçamento por escopo.</p>'+action(data.project?'Ver solicitação':'Solicitar implantação','projectDialog()','')+'</section></div>'}
 function removeDialog(id){const a=findMember(id);if(a===data.team[0]||!a.licensed)return;modal('Remover agente do plano','<div class="stack"><p>'+esc(a.name)+' voltará para rascunho. Próxima mensalidade simulada: <b>'+money(monthly()-190)+'</b>.</p>'+action('Confirmar remoção',cmd('removeLicense',id),'')+'</div>')}
 function removeLicense(id){const a=findMember(id);if(a!==data.team[0]){a.licensed=false;a.paused=true;save()}dialog.close();go('billing')}
 function projectDialog(){const p=data.project||{};modal('Projeto personalizado','<form id="projectForm" class="stack">'+field('Empresa','company',p.company||data.workspace)+field('Quantidade de agentes','size',p.size||'2').replace('maxlength="240"','type="number" min="1" max="999"')+field('O que sua equipe precisa automatizar?','scope',p.scope||'',true)+'<p class="muted">Solicitação de demonstração salva neste navegador. O orçamento depende do escopo.</p><button class="btn">Salvar solicitação</button></form>');document.querySelector('#projectForm').onsubmit=e=>{e.preventDefault();data.project=Object.fromEntries(new FormData(e.target));data.workspace=data.project.company;save();dialog.close();go('billing')}}
