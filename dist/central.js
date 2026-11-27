@@ -56,7 +56,9 @@ const serviceRoles=[
  {key:'comercial',label:'Comercial',model:2},
  {key:'pos-venda',label:'Pós-venda',model:4}
 ];
+const customModel=models.findIndex(([name])=>name==='Personalizado');
 function memberRoles(agent){
+ if(agent.model!==customModel)return [];
  return serviceRoles.filter(role=>Object.hasOwn(agent.functions||{},role.key)).map(role=>({
    ...role,question:agent.functions[role.key]||models[role.model][3]
  }));
@@ -83,6 +85,12 @@ if(!data.team){
  data.team=[base];
  if(oldWorkspace)for(const a of catalog){const state=data.extras[a.id];if(state&&(state.owned||state.requested)){data.team.push({...makeAgent(5),name:a.name,goal:a.description,greeting:a.welcome,question:a.questions.join('\n'),paused:!state.active})}}
  data.workspace=oldWorkspace?'Agência de viagens':'Minha empresa';save();
+}
+// Keep previously configured combinations under the model that now owns them.
+const previouslyCombined=data.team.filter(a=>a.model!==customModel&&serviceRoles.some(r=>Object.hasOwn(a.functions||{},r.key)));
+if(previouslyCombined.length){
+ for(const a of previouslyCombined)a.model=customModel;
+ save();
 }
 const monthly=(n=data.team.filter(a=>a.licensed).length)=>490+190*Math.max(0,n-1);
 function action(label,fn,variant='light'){return '<button type="button" class="btn '+variant+'" onclick="'+fn+'">'+label+'</button>'}
@@ -113,18 +121,37 @@ function teamPage(){
  return '<div class="heading"><div>'+title('Minha equipe','Os agentes compartilham o WhatsApp conectado à empresa. Em Conversas, escolha quem prepara a sugestão e revise antes de enviar.')+'</div>'+action('Adicionar agente','chooseModel()','')+'</div><div class="catalog pane">'+data.team.map(a=>'<article class="special"><div class="row"><span class="tile">'+icon('agent')+'</span><span class="tag '+(a.licensed&&!a.paused?'bot':'')+'">'+(a.licensed?(a.paused?'Pausado':'Ativo em teste'):'Rascunho')+'</span></div><small>'+models[a.model][0]+'</small><h2>'+esc(a.name)+'</h2><p>'+esc(a.goal)+'</p>'+(memberRoles(a).length?'<p class="member-role-summary">'+memberRoles(a).map(r=>r.label).join(' · ')+'</p>':'')+'<div class="actions">'+action('Configurar',cmd('configure',a.id))+action('Testar roteiro',cmd('tryMember',a.id))+action('Testar IA',cmd('testAgentAI',a.id))+(a.licensed?action(a.paused?'Retomar':'Pausar',cmd('toggleMember',a.id)):action('Ativar',cmd('activateDialog',a.id),''))+'</div></article>').join('')+'</div>';
 }
 function chooseModel(){modal('Adicionar agente','<div class="options">'+models.map((m,i)=>'<button class="option" onclick="newDraft('+i+')"><b>'+m[0]+'</b><small>'+m[1]+'</small></button>').join('')+'</div>')}
-function newDraft(i){const a=makeAgent(i);if(i===5)a.functions=Object.fromEntries(serviceRoles.slice(0,3).map(r=>[r.key,models[r.model][3]]));data.team.push(a);save();dialog.close();go('agent');configure(a.id)}
+function newDraft(i){const a=makeAgent(i);if(i===customModel)a.functions=Object.fromEntries(serviceRoles.slice(0,3).map(r=>[r.key,models[r.model][3]]));data.team.push(a);save();dialog.close();go('agent');configure(a.id)}
 function field(label,key,value,area=false){return '<label class="field">'+label+(area?'<textarea name="'+key+'" maxlength="2000">'+esc(value)+'</textarea>':'<input name="'+key+'" value="'+esc(value)+'" maxlength="240" required>')+'</label>'}
-function select(label,key,values,current){return '<label class="field">'+label+'<select name="'+key+'">'+values.map(v=>'<option '+(v===current?'selected':'')+'>'+v+'</option>').join('')+'</select></label>'}
+function select(label,key,values,current){return '<label class="field">'+label+'<select name="'+key+'" aria-label="'+esc(label)+'">'+values.map(v=>'<option '+(v===current?'selected':'')+'>'+v+'</option>').join('')+'</select></label>'}
 function phrasing(tone,pace,line){const prefix={Humanizado:'Estou aqui para ajudar. ',Profissional:'Olá. ',Firme:'Vamos ao ponto. '};return prefix[tone]+(pace==='Calmo'?'Vamos por partes. ':'')+line}
 function configure(id){
- const a=findMember(id);modal('Configurar agente','<form id="memberForm" class="stack">'+field('Nome','name',a.name)+field('Objetivo','goal',a.goal)+roleEditor(a)+field('Abertura da conversa','greeting',a.greeting)+field('Perguntas seguintes · uma por linha','question',a.question,true)+select('Tom de voz','tone',['Humanizado','Profissional','Firme'],a.tone)+select('Ritmo','pace',['Direto','Calmo'],a.pace)+'<output class="preview" id="sample"></output>'+field('Informações da empresa para o atendimento','knowledge',a.knowledge,true)+field('Encaminhar para a equipe ao mencionar · separe por vírgulas','handoff',a.handoff,true)+'<button class="btn">Salvar configuração</button></form>');
+ const a=findMember(id);
+ const modelChoice=a.model===customModel?'<div class="field">Modelo <strong>Personalizado</strong></div>':
+   select('Modelo','model',[models[a.model][0],models[customModel][0]],models[a.model][0]);
+ const modelSettings='<div data-model-settings '+(a.model===customModel?'':'hidden')+'>'+ (a.model===customModel?roleEditor(a):'')+'</div>';
+ modal('Configurar agente','<form id="memberForm" class="stack">'+modelChoice+field('Nome','name',a.name)+field('Objetivo','goal',a.goal)+modelSettings+field('Abertura da conversa','greeting',a.greeting)+field('Perguntas seguintes · uma por linha','question',a.question,true)+select('Tom de voz','tone',['Humanizado','Profissional','Firme'],a.tone)+select('Ritmo','pace',['Direto','Calmo'],a.pace)+'<output class="preview" id="sample"></output>'+field('Informações da empresa para o atendimento','knowledge',a.knowledge,true)+field('Encaminhar para a equipe ao mencionar · separe por vírgulas','handoff',a.handoff,true)+'<button class="btn">Salvar configuração</button></form>');
  const form=document.querySelector('#memberForm');const sample=()=>document.querySelector('#sample').textContent=phrasing(form.elements.tone.value,form.elements.pace.value,form.elements.greeting.value);sample();form.oninput=sample;
+ const modelInput=form.elements.namedItem('model');
+ const isCustom=()=>a.model===customModel||modelInput?.value===models[customModel][0];
+ if(modelInput){
+   const settings=form.querySelector('[data-model-settings]');
+   modelInput.onchange=()=>{
+     if(isCustom()&&!settings.firstElementChild){
+       const role=serviceRoles.find(r=>r.model===a.model);
+       settings.innerHTML=roleEditor({...a,model:customModel,functions:{[role.key]:a.question.split('\n')[0].slice(0,240)}});
+     }
+     settings.hidden=!isCustom();
+   };
+ }
  form.onchange=e=>{if(e.target.name==='role')e.target.closest('.member-function').querySelector('.field').hidden=!e.target.checked};
  form.onsubmit=e=>{e.preventDefault();const values=new FormData(form);
  const v=Object.fromEntries(['name','goal','greeting','question','tone','pace','knowledge','handoff'].map(k=>[k,values.get(k)]));
  if(['name','goal','greeting'].some(k=>!v[k].trim()))return;
- v.functions=Object.fromEntries(values.getAll('role').map(key=>[key,values.get('role-'+key).trim()]));
+ if(isCustom()){
+   v.model=customModel;
+   v.functions=Object.fromEntries(values.getAll('role').map(key=>[key,values.get('role-'+key).trim()]));
+ }
  Object.assign(a,v);save();dialog.close();go('agent')};
 }
 function toggleMember(id){const a=findMember(id);if(a.licensed){a.paused=!a.paused;save();render()}}
