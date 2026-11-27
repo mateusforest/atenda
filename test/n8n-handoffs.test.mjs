@@ -9,7 +9,7 @@ function fixture(){
   const mark=(message,active=1)=>source.prepare('INSERT OR REPLACE INTO team_handoffs VALUES(?,?,?,?)').run('pilot','100@lid',message,active);
   let time=0;
   const start=()=>handoffs(source,state,'pilot',()=>time);
-  return {start,mark,advance:hours=>time+=hours*3600000};
+  return {source,start,mark,advance:hours=>time+=hours*3600000};
 }
 test('only new handoffs get one immediate notice and one reminder after 24h',async()=>{
   const f=fixture(); f.mark('old');
@@ -44,6 +44,30 @@ test('two overlapping executions cannot dispatch the same notice',async()=>{
   assert.equal(await q.deliver(id,()=>assert.fail()),'skipped');finish();await sending;
 });
 
+for (const reminder of [false,true]) {
+  test(`contact lookup failure keeps the ${reminder?'reminder':'initial notice'} queued for the next attempt`,async()=>{
+    const f=fixture(), queue=f.start();
+    f.mark('new');
+    const [{id}]=queue.due();
+    if (reminder) {
+      await queue.deliver(id,async()=>{});
+      f.advance(24);
+    }
+    const deliveries=[];
+    const send=async job=>{deliveries.push([job.id,job.name,job.reminder])};
+    f.source.exec('ALTER TABLE service_chat RENAME TO unavailable_chat');
+    await assert.rejects(queue.deliver(id,send),/no such table: service_chat/);
+    assert.deepEqual(deliveries,[]);
+    f.source.exec('ALTER TABLE unavailable_chat RENAME TO service_chat');
+    f.source.prepare('INSERT INTO service_chat VALUES(?,?,?,?)').run('pilot','100@lid','Contato fictício','Olá');
+    const next=f.start();
+    assert.deepEqual(next.due(),[{id}]);
+    assert.equal(await next.deliver(id,send),'accepted');
+    assert.equal(await next.deliver(id,send),'skipped');
+    assert.deepEqual(next.due(),[]);
+    assert.deepEqual(deliveries,[[id,'Contato fictício',reminder]]);
+  });
+}
 
 test('an alert updates the existing CRM entry and each stage is recorded once', async()=>{
   const {recordNotice}=await import('../lib/handoff-email.mjs');

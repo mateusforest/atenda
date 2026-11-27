@@ -43,9 +43,10 @@ export function handoffs(source, state, session, now = Date.now) {
     if (!row || !stillOpen(row) || row.retry>now()) return 'skipped';
     const reminder = row.stage==='notified' && row.opened<=now()-day;
     if (row.stage!=='new' && !reminder) return 'skipped';
-    // Never replay an ambiguous SMTP send automatically, even across a worker restart.
-    state.prepare("UPDATE notices SET stage='sending' WHERE id=?").run(id);
     const contact = source.prepare('SELECT name,preview FROM service_chat WHERE session=? AND jid=?').get(session,row.jid);
+    // Only claim the delivery once the contact lookup has succeeded.
+    const claim = state.prepare("UPDATE notices SET stage='sending' WHERE id=? AND stage=? AND retry<=?").run(id,row.stage,now());
+    if (!claim.changes) return 'skipped';
     try {
       await send({id, session, jid:row.jid, name:contact?.name||'', preview:contact?.preview||'', opened:row.opened, reminder});
       state.prepare('UPDATE notices SET stage=?,retry=0 WHERE id=?').run(reminder?'reminded':'notified',id);
