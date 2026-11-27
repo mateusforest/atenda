@@ -5,6 +5,7 @@
   "crons": [{ "path": "/api/billing-cron", "schedule": "15 8 * * *" }],
   "outputDirectory": "dist",
   "rewrites": [
+    {"source":"/admin","destination":"/admin.html"},
     {
       "source": "/portal",
       "destination": "/portal.html"

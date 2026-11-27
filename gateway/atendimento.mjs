@@ -1,5 +1,6 @@
 import {DatabaseSync} from 'node:sqlite';
 import {receiver} from './receiver.mjs';
+import {officialSupport} from './official-support.mjs';
 import {dirname,join} from 'node:path';
 import {mkdirSync} from 'node:fs';
 import {fault, transport} from '../lib/wa-transport.mjs';
@@ -17,12 +18,14 @@ async function gateway(path,body){
   const res=await fetch(new URL('/api/'+path,origin),{method:body?'POST':'GET',redirect:'error',
     headers:{'X-API-Key':WA_AKG_API_KEY,'Content-Type':'application/json'},
     body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(11000)});
-  if(!res.ok)throw fault(502,'O WA-AKG respondeu HTTP '+res.status+'.');
+  if(!res.ok)throw Object.assign(fault(502,'O WA-AKG respondeu HTTP '+res.status+'.'),{gatewayStatus:res.status});
   const payload=await res.json();
   if(payload.status===false)throw fault(502,'O WA-AKG recusou a operação.');
   return payload.data ?? payload;
 }
-const execute=receiver({db,gateway,session,sessionId:WA_AKG_SESSION,ownerEmail:WA_OWNER_EMAIL});
+const official=officialSupport({db,gateway,clientSession:WA_AKG_SESSION});
+const execute=receiver({db,gateway,session,sessionId:WA_AKG_SESSION,ownerEmail:WA_OWNER_EMAIL,official});
+setInterval(()=>{void official.tick()},12000).unref();
 
 const bus=transport();
 bus.listen('request',async ({id,command})=>{

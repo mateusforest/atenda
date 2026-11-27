@@ -14,7 +14,7 @@ async function write(path,data,etag){
   try{return (await put(path,JSON.stringify(data),{access:'private',addRandomSuffix:false,contentType:'application/json',...(etag?{ifMatch:etag}:{allowOverwrite:false})})).etag}
   catch(e){if(/already exists|precondition/i.test(e.message)||e.name==='BlobPreconditionFailedError')throw problem(409,'A assinatura mudou. Atualize antes de continuar.');throw e}
 }
-async function userOf(req){
+export async function userOf(req){
   const auth=req.headers.authorization||'';
   if(!/^Bearer \S+$/.test(auth))throw problem(401,'Entre na sua conta Atenda.');
   const r=await fetch(new URL('/auth/v1/user',process.env.SUPABASE_URL),{headers:{Authorization:auth,apikey:process.env.SUPABASE_PUBLISHABLE_KEY},signal:AbortSignal.timeout(6000),redirect:'error'});
@@ -96,7 +96,9 @@ export default async function billing(req,res){
     }
     if(action==='reconcile'){
       if(req.method!=='GET'||!cronAuthorized(req))throw problem(401,'Acesso restrito.');
-      if(cfg.pix)await scan(root);return send(200,{ok:true});
+      if(cfg.pix)await scan(root);
+      const {subscriptionNotifications}=await import('../lib/administration.mjs');
+      await subscriptionNotifications();return send(200,{ok:true});
     }
     const user=await userOf(req),account=root+'accounts/'+user.id+'.json',pointer=await read(account);
     let path=pointer?root+'contracts/'+pointer.data.id+'.json':null, current=path?await read(path):null;

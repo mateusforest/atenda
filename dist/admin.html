@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="same-origin"><title>Administração · Atenda</title><link rel="stylesheet" href="/admin.css"><script defer src="/conta.js"></script><script defer src="/admin.js"></script></head>
+<body><header><a class="brand" href="/admin"><i>a</i>atenda</a><span>Administração</span><a class="portal" href="/portal">Central de atendimento ↗</a></header>
+<main><h1>Administração da Atenda</h1><output id="access" role="status">Verificando acesso…</output>
+<div id="workspace" hidden>
+<section><div class="section-head"><h2>WhatsApp oficial</h2><strong id="state" class="badge">Consultando</strong></div>
+<p>Este número dá as boas-vindas no cadastro, orienta quem escreve e envia avisos de mensalidade.</p>
+<div id="pair" hidden><img id="qr" width="220" height="220" alt="QR para vincular o WhatsApp oficial da Atenda"><p>No celular do suporte, abra <b>Aparelhos conectados → Conectar aparelho</b>.</p></div>
+<p id="number"></p><div class="actions"><button id="connect" hidden>Conectar número oficial</button><button id="toggle" class="light" hidden></button><button id="refresh" class="light">Atualizar conexão</button></div><output id="channel-message" role="status"></output>
+<details><summary>Últimos envios automáticos</summary><ul id="activity"></ul></details></section>
+<section><div class="section-head"><h2>Contas e assinaturas</h2><span id="count"></span></div><p id="billing-env"></p>
+<div class="scroll"><table><thead><tr><th>Empresa ou conta</th><th>Cadastro</th><th>Assinatura</th><th>Mensalidade</th></tr></thead><tbody id="accounts"></tbody></table></div>
+<div class="actions"><button class="light" id="previous" hidden>Anterior</button><button class="light" id="next" hidden>Próxima</button><button class="light" id="reload">Atualizar contas</button></div><output id="account-message" role="status"></output></section></div></main></body></html>

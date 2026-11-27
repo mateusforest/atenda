@@ -4,7 +4,7 @@ import {contactPhotos} from './contact-photos.mjs';
 import {voiceService} from './voice.mjs';
 import {agentEngine} from './agents.mjs';
 
-export function receiver({db,gateway,session,sessionId,ownerEmail,draft=agentEngine(),voice=voiceService(db,sessionId)}){
+export function receiver({db,gateway,session,sessionId,ownerEmail,official,draft=agentEngine(),voice=voiceService(db,sessionId)}){
   const photo=contactPhotos(gateway,session);
   db.exec(`pragma busy_timeout=3000;
   create table if not exists owner(session text primary key,user_id text not null);
@@ -25,6 +25,7 @@ export function receiver({db,gateway,session,sessionId,ownerEmail,draft=agentEng
       return {state:row?.status==='CONNECTED'?'connected':'offline'};
     }
     verifyOwner(cmd.owner);
+    if(cmd.op==='official'&&official)return official.command(cmd.action);
     if(cmd.op==='trial') {
       if(!Array.isArray(cmd.history)||!cmd.history.length||cmd.history.length>12||cmd.history.some(m=>typeof m?.text!=='string'||typeof m.fromMe!=='boolean')||cmd.history.at(-1).fromMe)throw fault(400,'Teste inválido.');
       return draft(cmd.profile,cmd.history);
