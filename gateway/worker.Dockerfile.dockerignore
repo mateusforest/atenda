@@ -10,3 +10,4 @@ lib/*
 !dist/
 dist/*
 !dist/agent-rules.mjs
+!dist/agent-models.mjs

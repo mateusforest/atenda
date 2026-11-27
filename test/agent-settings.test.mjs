@@ -5,6 +5,21 @@ import {randomUUID} from 'node:crypto';
 import {receiver} from '../gateway/receiver.mjs';
 import {formatAgentProfile,trialReply} from '../lib/agent-profile.mjs';
 import {requestsTeam,openingForGreeting,relevantFact} from '../dist/agent-rules.mjs';
+import {models,customModel,serviceRoles} from '../dist/agent-models.mjs';
+
+test('preserva os modelos salvos e entrega ao Luna todas as funções do Personalizado',()=>{
+  assert.deepEqual(models.slice(0,6).map(m=>m.name),['Atendente','Consultor','Comercial','Suporte','Pós-venda','Personalizado']);
+  assert.equal(customModel,5);
+  assert.equal(models[0].roleLabel,'Recepção');
+  const functions=serviceRoles.map(role=>{
+    const model=models[role.model];
+    assert.ok(model.greeting.trim() && model.goal.trim() && model.questions.length>=2);
+    return {name:role.label,goal:model.goal,question:model.questions[0]};
+  });
+  assert.equal(new Set(serviceRoles.map(r=>r.key)).size,13);
+  const prompt=formatAgentProfile({functions},[]);
+  assert.deepEqual(JSON.parse(prompt.slice(prompt.indexOf('{'))).functions,functions);
+});
 
 test('abertura, nome, fatos públicos e perguntas já feitas',async()=>{
   const p={name:'Eva',greeting:'Olá, sou {nome}.',tone:'Firme',pace:'Calmo',question:'Qual produto?\nQual prazo?',knowledge:'Horário: 8h às 18h.\nPreço: R$ 40.'};

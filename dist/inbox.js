@@ -32,7 +32,7 @@ function agentRequest(op,fields,signal) {
 function agentProfile(agent){
   const keys=['name','goal','greeting','question','tone','pace','knowledge','handoff'];
   return {...Object.fromEntries(keys.map(key=>[key,String(agent[key]||'').slice(0,2000)])),guidelines:Empresa.guidelines,companyFacts:Empresa.companyFacts,
-    functions:memberRoles(agent).map(r=>({name:r.label,goal:models[r.model][1],question:r.question}))};
+    functions:memberRoles(agent).map(r=>({name:r.label,goal:models[r.model].goal,question:r.question}))};
 }
 function contactAvatar(item) {
   const name = item.name || item.jid.split('@')[0];
