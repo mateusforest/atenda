@@ -67,8 +67,29 @@ const monthly=(n=data.team.filter(a=>a.licensed).length)=>490+190*Math.max(0,n-1
 function action(label,fn,variant='light'){return '<button type="button" class="btn '+variant+'" onclick="'+fn+'">'+label+'</button>'}
 function cmd(fn,id){return fn+'(&quot;'+esc(id)+'&quot;)'}
 function findMember(id){return data.team.find(a=>a.id===id)}
+function testAgentAI(id){
+ const a=findMember(id),history=[];
+ modal('Testar IA · '+a.name,'<div class="bubbles" aria-live="polite"></div><form class="compose"><input aria-label="Mensagem de teste para a IA" maxlength="1500" required placeholder="Escreva como cliente"><button class="btn">Testar resposta</button></form><output role="status"></output>');
+ const form=dc.querySelector('form'), messages=dc.querySelector('.bubbles'), output=dc.querySelector('output');
+ function add(fromMe,text){
+   history.push({fromMe,text});
+   const line=document.createElement('div');line.className='bubble '+(fromMe?'out':'');line.textContent=text;messages.append(line);
+ }
+ add(true,a.greeting);
+ form.onsubmit=async e=>{
+   e.preventDefault();const input=form.querySelector('input'),button=form.querySelector('button'),question=input.value.trim();
+   if(!question||button.disabled)return;
+   button.disabled=true;input.disabled=true;output.textContent='Consultando o agente…';
+   try{
+     const result=await agentRequest('trial',{profile:agentProfile(a),history:[...history,{fromMe:false,text:question}].slice(-12)});
+     if(!form.isConnected)return;
+     add(false,question);add(true,result.text);input.value='';output.textContent='';messages.scrollTop=messages.scrollHeight;
+   }catch(e){output.textContent=e.message}
+   finally{input.disabled=false;button.disabled=false;if(form.isConnected)input.focus()}
+ };
+}
 function teamPage(){
- return '<div class="heading"><div>'+title('Minha equipe','Configure os agentes que atendem pela sua empresa.')+'</div>'+action('Adicionar agente','chooseModel()','')+'</div><div class="catalog pane">'+data.team.map(a=>'<article class="special"><div class="row"><span class="tile">'+icon('agent')+'</span><span class="tag '+(a.licensed&&!a.paused?'bot':'')+'">'+(a.licensed?(a.paused?'Pausado':'Ativo em teste'):'Rascunho')+'</span></div><small>'+models[a.model][0]+'</small><h2>'+esc(a.name)+'</h2><p>'+esc(a.goal)+'</p><div class="actions">'+action('Configurar',cmd('configure',a.id))+action('Testar',cmd('tryMember',a.id))+(a.licensed?action(a.paused?'Retomar':'Pausar',cmd('toggleMember',a.id)):action('Ativar',cmd('activateDialog',a.id),''))+'</div></article>').join('')+'</div>';
+ return '<div class="heading"><div>'+title('Minha equipe','Configure os agentes que atendem pela sua empresa.')+'</div>'+action('Adicionar agente','chooseModel()','')+'</div><div class="catalog pane">'+data.team.map(a=>'<article class="special"><div class="row"><span class="tile">'+icon('agent')+'</span><span class="tag '+(a.licensed&&!a.paused?'bot':'')+'">'+(a.licensed?(a.paused?'Pausado':'Ativo em teste'):'Rascunho')+'</span></div><small>'+models[a.model][0]+'</small><h2>'+esc(a.name)+'</h2><p>'+esc(a.goal)+'</p><div class="actions">'+action('Configurar',cmd('configure',a.id))+action('Testar roteiro',cmd('tryMember',a.id))+action('Testar IA',cmd('testAgentAI',a.id))+(a.licensed?action(a.paused?'Retomar':'Pausar',cmd('toggleMember',a.id)):action('Ativar',cmd('activateDialog',a.id),''))+'</div></article>').join('')+'</div>';
 }
 function chooseModel(){modal('Adicionar agente','<div class="options">'+models.map((m,i)=>'<button class="option" onclick="newDraft('+i+')"><b>'+m[0]+'</b><small>'+m[1]+'</small></button>').join('')+'</div>')}
 function newDraft(i){const a=makeAgent(i);data.team.push(a);save();dialog.close();go('agent');configure(a.id)}

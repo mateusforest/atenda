@@ -26,6 +26,13 @@ function timestamp(date, full = false) {
   return el;
 }
 const foldContact = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+function agentRequest(op,fields,signal) {
+  return whatsappInboxRequest('',{method:'POST',body:JSON.stringify({op,...fields}),signal});
+}
+function agentProfile(agent){
+  const keys=['name','goal','greeting','question','tone','pace','knowledge','handoff'];
+  return {...Object.fromEntries(keys.map(key=>[key,String(agent[key]||'').slice(0,2000)])),guidelines:Empresa.guidelines};
+}
 function contactAvatar(item) {
   const name = item.name || item.jid.split('@')[0];
   const avatar = document.createElement('span');
@@ -113,10 +120,11 @@ class WhatsAppInbox extends HTMLElement {
       <div class="wa-paging" hidden><button type="button" class="link">Anterior</button><button type="button" class="link">Próxima</button></div>
       <section class="wa-history" hidden><button type="button" class="link">‹ Voltar às conversas</button>
         <h3 tabindex="-1"></h3><div class="bubbles" aria-label="Histórico" tabindex="0"></div>
+        <div class="wa-toolbar wa-agent"><select aria-label="Agente da sugestão"></select><button type="button" class="btn light">Sugerir resposta</button></div>
         <form class="compose"><input aria-label="Sua resposta no WhatsApp" placeholder="Escreva uma resposta…" maxlength="4000" required autocomplete="off"><button class="btn">Enviar</button></form>
         <output role="status"></output></section>`;
     this.search = this.querySelector('[type=search]');
-    this.scope = this.querySelector('select');
+    this.scope = this.querySelector('.wa-toolbar select');
     this.page = 1;
     this.scope.onchange = ()=>this.changePage(1);
     this.paging=this.querySelector('.wa-paging');
@@ -130,13 +138,22 @@ class WhatsAppInbox extends HTMLElement {
     this.status=this.querySelector('p');
     this.form=this.querySelector('form');
     this.input=this.form.querySelector('input');
+    this.agents=this.querySelector('.wa-agent select');
+    this.suggest=this.querySelector('.wa-agent button');
+    for(const a of data.team.filter(a=>a.licensed&&!a.paused))this.agents.add(new Option(a.name,a.id));
+    this.suggest.onclick=()=>this.suggestReply();
     this.pane.querySelector('button').onclick=()=>this.select(null);
     this.form.onsubmit=e=>{e.preventDefault();this.reply()};
     this.drafts=new Map();
     this.pending=new Map();
     this.select(null);
   }
-  disconnectedCallback(){clearTimeout(this.timer);this.request?.abort()}
+  disconnectedCallback(){clearTimeout(this.timer);this.request?.abort();this.releaseChat()}
+  releaseChat(){
+    this.actions?.abort();
+    for(const url of this.mediaUrls||[])URL.revokeObjectURL(url);
+    this.mediaUrls=[];
+  }
   changePage(page){
     this.page=page;
     this.rows=[];this.list.replaceChildren();this.paging.hidden=true;
@@ -144,6 +161,8 @@ class WhatsAppInbox extends HTMLElement {
     this.refresh();
   }
   select(chat){
+    this.releaseChat();this.actions=new AbortController();this.latest=null;this.generating=false;
+    this.suggest.disabled=true;
     this.restoreJid=this.selected?.jid;
     if(this.selected)this.drafts.set(this.selected.jid,this.input.value);
     this.selected=chat;
@@ -195,6 +214,10 @@ class WhatsAppInbox extends HTMLElement {
         this.pane.querySelector('h3').replaceChildren(contactAvatar(chat),document.createTextNode(chat.name));
       }
       if(chat) this.status.textContent=rows.length?'':'Nenhuma mensagem neste histórico.';
+      if(chat){
+        this.latest=rows.at(-1);
+        this.suggest.disabled=this.generating||!this.agents.value||!this.latest||this.latest.fromMe||!!(this.latest.voice&&!this.latest.voice.transcript);
+      }
       const fingerprint=JSON.stringify(rows);
       if(fingerprint!==this.previous){
         this.previous=fingerprint;
@@ -204,6 +227,7 @@ class WhatsAppInbox extends HTMLElement {
           bubbles.replaceChildren(...rows.map(message=>{
             const line=document.createElement('div');line.className='bubble '+(message.fromMe?'out':'');
             line.textContent=message.text;
+            if(message.voice)this.decorateVoice(line,message,chat);
             const date = messageDate(message.time);
             if (date) line.append(timestamp(date, true));
             return line;
@@ -221,6 +245,54 @@ class WhatsAppInbox extends HTMLElement {
       if([401,403].includes(error.status)){this.rows=[];this.list.replaceChildren();this.pane.hidden=true;this.search.disabled=true;return}
     }
     if(this.isConnected&&request===this.request)this.timer=setTimeout(()=>this.refresh(),6000);
+  }
+  decorateVoice(line,message,chat){
+    const state=message.voice, signal=this.actions.signal;
+    const controls=document.createElement('div'), play=document.createElement('button');
+    play.type='button';play.className='link';play.textContent='Ouvir áudio';
+    controls.append(play);line.append(controls);
+    const args={jid:chat.jid,messageId:message.id};
+    play.onclick=async()=>{
+      play.disabled=true;play.textContent='Carregando áudio…';
+      try{
+        const parts=[];let offset=0,size;
+        do{
+          const result=await agentRequest('audio',{...args,offset},signal);
+          const bytes=Uint8Array.from(atob(result.bytes),c=>c.charCodeAt(0));
+          if(!bytes.length||result.size>16*1024*1024||size!==undefined&&size!==result.size)throw Error('Arquivo de áudio inválido.');
+          parts.push(bytes);offset+=bytes.length;size=result.size;
+        }while(offset<size);
+        if(signal.aborted||!play.isConnected)return;
+        const audio=document.createElement('audio');audio.controls=true;
+        audio.src=URL.createObjectURL(new Blob(parts));this.mediaUrls.push(audio.src);
+        play.replaceWith(audio);audio.play().catch(()=>{});
+      }catch(e){if(!signal.aborted){play.disabled=false;play.textContent='Tentar ouvir novamente';this.pane.querySelector('output').textContent=e.message}}
+    };
+    if(state.transcript)return;
+    if(state.pending){controls.append(' · Transcrevendo…');return}
+    const transcribe=document.createElement('button');transcribe.type='button';transcribe.className='link';
+    transcribe.textContent=state.issue?'Tentar transcrever novamente':'Transcrever';
+    if(state.issue)controls.append(document.createTextNode(' · '+state.issue+' '));
+    controls.append(transcribe);
+    transcribe.onclick=async()=>{
+      transcribe.disabled=true;
+      try{await agentRequest('voice',args,signal);if(!signal.aborted)this.refresh()}
+      catch(e){if(!signal.aborted){transcribe.disabled=false;this.pane.querySelector('output').textContent=e.message}}
+    };
+  }
+  async suggestReply(){
+    const a=findMember(this.agents.value),signal=this.actions.signal, latest=this.latest;
+    if(!a||!latest||this.suggest.disabled)return;
+    const output=this.pane.querySelector('output');
+    if(this.input.value.trim()){output.textContent='Guarde ou limpe seu rascunho antes de pedir uma sugestão.';return}
+    this.generating=true;this.suggest.disabled=true;output.textContent='Preparando sugestão…';
+    try{
+      const result=await agentRequest('suggest',{jid:this.selected.jid,messageId:latest.id,profile:agentProfile(a)},signal);
+      if(signal.aborted)return;
+      if(this.input.value||latest.id!==this.latest?.id){output.textContent='A conversa ou o rascunho mudou. Confira antes de pedir outra sugestão.';return}
+      this.input.value=result.text;output.textContent='Sugestão pronta para revisar e enviar.';this.input.focus();
+    }catch(e){if(!signal.aborted)output.textContent=e.message}
+    finally{if(!signal.aborted){this.generating=false;this.refresh()}}
   }
   async reply(){
     const chat=this.selected,text=this.input.value.trim(),button=this.form.querySelector('button');

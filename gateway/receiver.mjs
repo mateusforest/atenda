@@ -1,8 +1,10 @@
 import {createHash} from 'node:crypto';
 import {fault,privateJid,uuid} from '../lib/wa-transport.mjs';
 import {contactPhotos} from './contact-photos.mjs';
+import {voiceService} from './voice.mjs';
+import {agentEngine} from './agents.mjs';
 
-export function receiver({db,gateway,session,sessionId,ownerEmail}){
+export function receiver({db,gateway,session,sessionId,ownerEmail,draft=agentEngine(),voice=voiceService(db,sessionId)}){
   const photo=contactPhotos(gateway,session);
   db.exec(`pragma busy_timeout=3000;
   create table if not exists owner(session text primary key,user_id text not null);
@@ -23,6 +25,10 @@ export function receiver({db,gateway,session,sessionId,ownerEmail}){
       return {state:row?.status==='CONNECTED'?'connected':'offline'};
     }
     verifyOwner(cmd.owner);
+    if(cmd.op==='trial') {
+      if(!Array.isArray(cmd.history)||!cmd.history.length||cmd.history.length>12||cmd.history.some(m=>typeof m?.text!=='string'||typeof m.fromMe!=='boolean')||cmd.history.at(-1).fromMe)throw fault(400,'Teste inválido.');
+      return draft(cmd.profile,cmd.history);
+    }
     if(cmd.op==='chats'){
       const scope=cmd.scope??'all', page=cmd.page??1;
       if(!['all','waiting','answered'].includes(scope)||!Number.isSafeInteger(page)||page<1||page>100000)throw fault(400,'Filtro de conversas inválido.');
@@ -35,12 +41,31 @@ export function receiver({db,gateway,session,sessionId,ownerEmail}){
     }
     if(!privateJid.test(cmd.jid))throw fault(400,'Contato inválido.');
     const contact=encodeURIComponent(cmd.jid);
-    if(cmd.op==='history'){
+    if(['history','suggest','voice','audio'].includes(cmd.op)){
       const rows=await gateway('chat/'+session+'/'+contact);
+      if(cmd.op==='voice'||cmd.op==='audio'){
+        const row=rows.find(m=>m.keyId===cmd.messageId && m.type==='AUDIO');
+        if(!row)throw fault(404,'Áudio não encontrado nesta conversa.');
+        return cmd.op==='audio'?voice.chunk(row,cmd.offset):voice.start(cmd.jid,row,true);
+      }
+      const latest=rows.at(-1);
+      if(latest?.type==='AUDIO'&&!latest.fromMe){
+        try{voice.start(cmd.jid,latest)}catch(e){if(e.status!==429)throw e}
+      }
+      if(cmd.op==='suggest'){
+        if(!latest || latest.fromMe || latest.keyId!==cmd.messageId)throw fault(409,'A conversa mudou. Confira a última mensagem.');
+        if(latest.type==='AUDIO'&&!voice.state(cmd.jid,latest).transcript)throw fault(409,'Aguarde a transcrição ou confira o áudio.');
+        if(latest.type!=='AUDIO'&&!latest.content?.trim())throw fault(409,'A última mensagem não contém texto para o agente.');
+        return draft(cmd.profile,rows.slice(-12).map(row=>({fromMe:row.fromMe,text:(row.type==='AUDIO'?voice.state(cmd.jid,row).transcript:row.content)||'[Mídia]'})));
+      }
       // Mantém a resposta dentro do limite de um broadcast mesmo com textos extensos.
       let size=0;const messages=[];
       for(const row of rows.toReversed()){
         const message={id:row.keyId,fromMe:row.fromMe===true,text:excerpt(row.content||'[Mensagem de mídia]',12000),time:row.timestamp};
+        if(row.type==='AUDIO'){
+          message.voice=voice.state(cmd.jid,row);
+          message.text=message.voice.transcript||'Mensagem de voz';
+        }
         size+=Buffer.byteLength(JSON.stringify(message));if(size>115000)break;
         messages.unshift(message);
       }

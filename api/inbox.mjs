@@ -27,8 +27,14 @@ export default async function inbox(req,res) {
       command={op,jid,owner,scope,page};
     } else if(req.method==='POST'){
       const body=typeof req.body==='string'?JSON.parse(req.body):req.body;
+      if(['suggest','trial','voice','audio'].includes(body?.op)){
+        if(body.op!=='trial'&&(!privateJid.test(body.jid)||typeof body.messageId!=='string'||!body.messageId||body.messageId.length>200))throw fault(400,'Mensagem inválida.');
+        if(JSON.stringify(body).length>40000)throw fault(413,'Contexto muito longo.');
+        command={op:body.op,owner,jid:body.jid,messageId:body.messageId,profile:body.profile,history:body.history,offset:body.offset};
+      }else{
       if(!privateJid.test(body?.jid)||!uuid.test(body?.requestId)||typeof body?.text!=='string'||!body.text.trim()||body.text.length>4000)throw fault(400,'Informe uma resposta de até 4.000 caracteres.');
       command={op:'send',owner,jid:body.jid,requestId:body.requestId,text:body.text.trim()};
+      }
     } else throw fault(405,'Método inválido.');
     json(200,await callWindows(command));
   } catch(error){json(error.status||503,{error:error.status?error.message:'O serviço de atendimento está indisponível.'})}

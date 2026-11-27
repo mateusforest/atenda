@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
+  "functions": { "api/inbox.mjs": { "maxDuration": 90 } },
   "outputDirectory": "dist",
   "rewrites": [
     {

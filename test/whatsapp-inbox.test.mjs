@@ -4,6 +4,21 @@ import {DatabaseSync} from 'node:sqlite';
 import {randomUUID} from 'node:crypto';
 import {receiver} from '../gateway/receiver.mjs';
 
+test('a sugestão usa a transcrição da conversa, sem enviar, e recusa uma mensagem desatualizada',async()=>{
+  const owner={id:randomUUID(),email:'owner@example.test'},jid='123@lid';
+  const gateway=async path=>{
+    assert.equal(path,'chat/test/'+encodeURIComponent(jid));
+    return [{keyId:'m1',type:'AUDIO',fromMe:false}];
+  };
+  const voice={state:()=>({transcript:'Qual o horário?'}),start(){}};
+  const draft=async(profile,rows)=>{assert.equal(rows.at(-1).text,'Qual o horário?');return {text:'Das 9h às 18h.'}};
+  const run=receiver({db:new DatabaseSync(':memory:'),session:'test',sessionId:'test',ownerEmail:owner.email,gateway,voice,draft});
+  assert.deepEqual(await run({op:'suggest',owner,jid,messageId:'m1'}),{text:'Das 9h às 18h.'});
+  await assert.rejects(run({op:'suggest',owner,jid,messageId:'outro'}),{status:409});
+  await assert.rejects(run({op:'audio',owner,jid,messageId:'outro',offset:0}),{status:404});
+  await assert.rejects(run({op:'trial',owner:{...owner,email:'outro@example.test'}}),{status:403});
+});
+
 test('somente a conta vinculada lê mensagens e uma tentativa gera um único envio',async()=>{
   const db=new DatabaseSync(':memory:'),jid='123@s.whatsapp.net';
   const owner={id:randomUUID(),email:'owner@example.test'};
