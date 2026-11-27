@@ -1,7 +1,7 @@
 const paths={home:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',chat:'M4 4h16v13H9l-5 4z',agent:'M5 8h14v11H5z M12 4v4 M9 12h.1 M15 12h.1 M9 16h6',channel:'M7 3h10v18H7z M11 17h2',quotes:'M5 3h10l4 4v14H5z M8 11h8 M8 15h6',clock:'M12 3a9 9 0 1 0 .1 0 M12 7v5l3 2'};
 const icon=k=>'<svg class="ico" aria-hidden="true" viewBox="0 0 24 24"><path d="'+paths[k]+'"/></svg>';
 const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const labels={home:'Visão geral',chat:'Conversas',agent:'Agentes',channel:'WhatsApp',billing:'Assinatura',panel:'Meu painel',integrations:'Integrações',settings:'Configurações'}, states=['Na fila','Com agente','Com equipe','Concluída'];
+const labels={home:'Visão geral',chat:'Conversas',agent:'Agentes',channel:'WhatsApp',panel:'Meu painel',integrations:'Integrações',settings:'Configurações'}, states=['Na fila','Com agente','Com equipe','Concluída'];
 const initial=[['Marina Costa','Gostaria de uma cotação para Gramado.',0],['Rafael Lima','Vamos em dois adultos e uma criança.',1],['Beatriz Alves','Podemos confirmar as datas?',2],['Lucas Martins','Tem opções para o feriado?',0],['Lívia Rocha','Obrigada pelo atendimento!',3]];
 const localDataKey='atenda.v1.'+AtendaAuth.user.id;
 let data;try{data=JSON.parse(localStorage.getItem(localDataKey))}catch{}
@@ -181,7 +181,7 @@ function tryMember(id,roleKey){
  draw();
 }
 function subscription(){const n=data.team.filter(a=>a.licensed).length;
- return title('Assinatura','Contrate e acompanhe a mensalidade da sua conta.')+'<atenda-subscription></atenda-subscription>'+ '<div class="grid pane"><section class="card stack"><h2>Simulador de equipe</h2><div class="price">'+money(monthly())+'<small> / mês</small></div><div class="listrow">Portal, 1 número e 1 agente<b>R$ 490</b></div><div class="listrow">'+(n-1)+' adicionais × R$ 190<b>'+money((n-1)*190)+'</b></div><p class="muted">Várias funções no mesmo agente contam uma vez. Pausar mantém o agente na assinatura simulada. Rascunhos são gratuitos.</p>'+action('Gerenciar agentes',"go(&quot;agent&quot;)")+data.team.filter((a,i)=>i&&a.licensed).map(a=>action('Remover '+esc(a.name)+' do plano',cmd('removeDialog',a.id))).join('')+'</section><section class="card stack"><span class="tile">'+icon('support')+'</span><h2>Projeto personalizado</h2><p>Implantação a partir de <b>R$ 3.900</b> para até dois agentes, além da mensalidade.</p><p class="muted">Inclui configuração, testes, treinamento e 30 dias de acompanhamento. Equipes maiores e integrações recebem orçamento por escopo.</p>'+action(data.project?'Ver solicitação':'Solicitar implantação','projectDialog()','')+'</section></div>'}
+ return '<atenda-subscription></atenda-subscription>'+ '<div class="grid pane"><section class="card stack"><h2>Simulador de equipe</h2><div class="price">'+money(monthly())+'<small> / mês</small></div><div class="listrow">Portal, 1 número e 1 agente<b>R$ 490</b></div><div class="listrow">'+(n-1)+' adicionais × R$ 190<b>'+money((n-1)*190)+'</b></div><p class="muted">Várias funções no mesmo agente contam uma vez. Pausar mantém o agente na assinatura simulada. Rascunhos são gratuitos.</p>'+action('Gerenciar agentes',"go(&quot;agent&quot;)")+data.team.filter((a,i)=>i&&a.licensed).map(a=>action('Remover '+esc(a.name)+' do plano',cmd('removeDialog',a.id))).join('')+'</section><section class="card stack"><span class="tile">'+icon('support')+'</span><h2>Projeto personalizado</h2><p>Implantação a partir de <b>R$ 3.900</b> para até dois agentes, além da mensalidade.</p><p class="muted">Inclui configuração, testes, treinamento e 30 dias de acompanhamento. Equipes maiores e integrações recebem orçamento por escopo.</p>'+action(data.project?'Ver solicitação':'Solicitar implantação','projectDialog()','')+'</section></div>'}
 function removeDialog(id){const a=findMember(id);if(a===data.team[0]||!a.licensed)return;modal('Remover agente do plano','<div class="stack"><p>'+esc(a.name)+' voltará para rascunho. Próxima mensalidade simulada: <b>'+money(monthly()-190)+'</b>.</p>'+action('Confirmar remoção',cmd('removeLicense',id),'')+'</div>')}
 function removeLicense(id){const a=findMember(id);if(a!==data.team[0]){a.licensed=false;a.paused=true;save()}dialog.close();go('billing')}
 function projectDialog(){const p=data.project||{};modal('Projeto personalizado','<form id="projectForm" class="stack">'+field('Empresa','company',p.company||data.workspace)+field('Quantidade de agentes','size',p.size||'2').replace('maxlength="240"','type="number" min="1" max="999"')+field('O que sua equipe precisa automatizar?','scope',p.scope||'',true)+'<p class="muted">Solicitação de demonstração salva neste navegador. O orçamento depende do escopo.</p><button class="btn">Salvar solicitação</button></form>');document.querySelector('#projectForm').onsubmit=e=>{e.preventDefault();data.project=Object.fromEntries(new FormData(e.target));data.workspace=data.project.company;save();dialog.close();go('billing')}}
@@ -192,6 +192,10 @@ function setMenu(open) {
 }
 menuButton.onclick = () => setMenu(menuButton.getAttribute('aria-expanded') !== 'true');
 function go(p) {
+  if (p === 'billing') {
+    Empresa.selectSubscription();
+    p = 'settings';
+  }
   page = p;
   setMenu(false);
   render();
@@ -199,7 +203,7 @@ function go(p) {
 }
 Object.assign(paths, {
   channel: 'M20.5 11.7a8.5 8.5 0 0 1-12.6 7.5L3 20.5l1.3-4.7a8.5 8.5 0 1 1 16.2-4.1z M8 8c0 4 3.5 7 7 7l1-2-2-1-1 1a7 7 0 0 1-3-3l1-1-1-2z',
-  billing: 'M3 5h18v14H3z M3 10h18 M6 15h4',
+  diagonal: 'M6 18 18 6 M7 6h11v11',
   panel: 'M3 5h18v14H3z M9 5v14 M9 10h12',
   integrations: 'M3 9h6v6H3z M15 3h6v6h-6z M15 15h6v6h-6z M9 12h3V6h3 M12 12v6h3',
   settings: 'M3 6h18 M3 12h18 M3 18h18 M7 3v6 M16 9v6 M9 15v6'
@@ -222,7 +226,41 @@ function openWhatsAppInbox(scope='all',chat=null){
   if(chat)panel.select(chat);
   else if(scope!==panel.scope.value){panel.scope.value=scope;panel.changePage(1)}
 }
-function home(){return title('Central de atendimento','Acompanhe as conversas e organize o trabalho da equipe.')+'<section class="hero"><h2>Sua equipe de agentes</h2><p>'+data.team.filter(a=>a.licensed&&!a.paused).length+' em teste · Atendimento, vendas e suporte.</p><button class="btn mint" onclick="go(\'agent\')">Adicionar agente</button></section><whatsapp-overview><div class="metrics">'+[['total','Conversas no WhatsApp','chat','all'],['waiting','Aguardando resposta','clock','waiting'],['answered','Respondidas','agent','answered']].map(([key,label,symbol,scope])=>'<button class="stat" onclick="openWhatsAppInbox(&quot;'+scope+'&quot;)">'+icon(symbol)+'<span>'+label+'</span><strong data-count="'+key+'">—</strong></button>').join('')+'</div><div class="grid"><section class="card"><div class="cardhead"><h2>Conversas recentes</h2><button class="link" onclick="openWhatsAppInbox()">Ver todas</button></div><p class="wa-feedback" role="status">Consultando WhatsApp…</p><div class="wa-recent"></div></section><section class="card"><div class="cardhead"><h2>Atendimento inicial</h2>'+icon('agent')+'</div><p><b>'+esc(data.team[0].name)+'</b></p><p class="muted">Primeiro contato com o cliente</p><div class="listrow">Modo de teste<b>'+(data.team[0].paused?'Pausado':'Ativo')+'</b></div><div class="listrow">Canal<button class="link" onclick="go(&quot;channel&quot;)">Ver conexão</button></div><p style="margin-top:18px"><button class="btn light" onclick="go(\'agent\')">Gerenciar equipe</button></p></section></div></whatsapp-overview>'}
+function home() {
+  const first = data.team[0];
+  const active = data.team.filter(agent => agent.licensed && !agent.paused).length;
+  const metrics = [
+    ['total', 'Conversas no WhatsApp', 'chat', 'all'],
+    ['waiting', 'Aguardando resposta', 'clock', 'waiting'],
+    ['answered', 'Respondidas', 'agent', 'answered']
+  ];
+  return `<section class="home-cover">
+    <div class="cover-copy">
+      <h1>Central de <em>atendimento.</em></h1>
+      <p>Acompanhe as conversas e organize o trabalho da sua equipe.</p>
+      <div class="cover-actions"><button class="btn" onclick="openWhatsAppInbox()">Abrir conversas <span aria-hidden="true">→</span></button>
+      <button class="link" onclick="chooseModel()">Adicionar agente</button></div>
+    </div>
+    <button type="button" class="cover-dot" data-open-dot aria-controls="dot-body" aria-label="Conversar com o Dot">
+      <span class="orbit-lines" aria-hidden="true"></span><img src="/dot.png" alt="" width="270" height="270">
+      <span class="dot-caption">Conversar com o Dot ${icon('diagonal')}</span>
+    </button>
+  </section>
+  <whatsapp-overview>
+    <div class="metrics">${metrics.map(([key,label,symbol,scope]) => `<button class="stat" onclick="openWhatsAppInbox('${scope}')"><span class="metric-label">${icon(symbol)}${label}</span><strong data-count="${key}">—</strong></button>`).join('')}</div>
+    <div class="grid home-columns">
+      <section class="card recent-section"><div class="cardhead"><h2>Conversas recentes</h2><button class="link" onclick="openWhatsAppInbox()">Ver todas <span aria-hidden="true">→</span></button></div>
+        <p class="wa-feedback" role="status">Consultando WhatsApp…</p><div class="wa-recent"></div></section>
+      <section class="card team-section"><div class="cardhead"><h2>Sua equipe</h2>${icon('agent')}</div>
+        <div class="team-first"><span class="tile">${icon('agent')}</span><div><small>Atendimento inicial</small><strong>${esc(first.name)}</strong></div><span class="tag">${first.paused ? 'Pausado' : 'Ativo em teste'}</span></div>
+        <div class="listrow">Agentes ativos em teste<b>${active}</b></div>
+        <div class="listrow">WhatsApp<button class="link" onclick="go('channel')">Ver conexão</button></div>
+        <button class="btn light" onclick="go('agent')">Gerenciar equipe</button>
+      </section>
+    </div>
+  </whatsapp-overview>`;
+}
+
 function list(){const q=search.toLocaleLowerCase('pt-BR');const rows=data.threads.filter(t=>(filter<0||t.status===filter)&&t.name.toLocaleLowerCase('pt-BR').includes(q));document.querySelector('#rows').innerHTML=rows.map(contact).join('')||'<p class="muted">Nenhuma conversa encontrada.</p>'}
 function chats(){return title('Conversas','Abra um atendimento para consultar o histórico ou responder.')+'<section class="card stack pane"><whatsapp-inbox></whatsapp-inbox></section><section class="card pane"><h2>Conversas de teste</h2><input aria-label="Buscar contato" placeholder="Buscar contato" id="search" oninput="search=this.value;list()"><div class="tabs">'+['Todas',...states].map((n,i)=>'<button class="'+(filter===i-1?'sel':'')+'" onclick="inbox('+(i-1)+')">'+n+'</button>').join('')+'</div><div id="rows"></div></section>'}
 function agent(){return '<button class="link" onclick="go(&quot;agent&quot;)">Equipe de agentes</button>'+title('Configurar agente','Personalize e teste a primeira conversa com um viajante.')+'<form id="agentForm" class="card stack pane" style="max-width:720px"><label class="field">Nome do agente<input name="name" maxlength="64" required value="'+esc(data.name)+'"></label><label class="field">Mensagem de boas-vindas<textarea name="greeting" maxlength="500" required>'+esc(data.greeting)+'</textarea></label><label><input name="enabled" type="checkbox" style="width:auto" '+(data.enabled?'checked':'')+'> Ativar agente de teste</label><div><button class="btn">Salvar ajustes</button> <button type="button" class="btn light" onclick="startTest()">Testar conversa</button></div><span class="msg" id="notice" role="status"></span></form>'}
@@ -260,7 +298,7 @@ function channel(){
    '<section class="card stack pane"><h2>Conexão do número</h2><wa-session-indicator></wa-session-indicator></section>';
 }
 document.addEventListener('atenda-reply-setup',replySetup);
-function render(){document.querySelector(".bar strong").textContent=Empresa.company||data.workspace;document.querySelector(".bar .badge").textContent=Empresa.privatePage?(Empresa.logged?"Área privada":"Acesso por conta"):(["home","chat","channel"].includes(page)?"Atendimento":"Demonstração");nav();document.querySelector('#app').innerHTML=({home,chat:chats,agent:teamPage,billing:subscription,setup:agent,channel,quotes,settings:Empresa.settings,integrations:Empresa.integrations,panel:Empresa.panel})[page]();if(page==='chat'){document.querySelector('#search').value=search;list()}if(page==='setup')agentForm.onsubmit=e=>{e.preventDefault();const f=new FormData(e.target),name=f.get('name').trim(),greeting=f.get('greeting').trim();if(!name||!greeting){notice.textContent='Preencha os dois campos.';return}Object.assign(data,{name,greeting,enabled:f.has('enabled')});save();notice.textContent='Ajustes salvos.'}}
+function render(){document.querySelector(".bar strong").textContent=Empresa.company||data.workspace;document.querySelector(".bar .badge").textContent=Empresa.privatePage?(Empresa.logged?"Área privada":"Acesso por conta"):(["home","chat","channel"].includes(page)?"Atendimento":"Demonstração");nav();document.querySelector('#app').innerHTML=({home,chat:chats,agent:teamPage,setup:agent,channel,quotes,settings:Empresa.settings,integrations:Empresa.integrations,panel:Empresa.panel})[page]();if(page==='chat'){document.querySelector('#search').value=search;list()}if(page==='setup')agentForm.onsubmit=e=>{e.preventDefault();const f=new FormData(e.target),name=f.get('name').trim(),greeting=f.get('greeting').trim();if(!name||!greeting){notice.textContent='Preencha os dois campos.';return}Object.assign(data,{name,greeting,enabled:f.has('enabled')});save();notice.textContent='Ajustes salvos.'}}
 function modal(title,html){dt.textContent=title;dc.innerHTML=html;if(!dialog.open)dialog.showModal();const b=dc.querySelector('.bubbles');if(b)b.scrollTop=b.scrollHeight}
 function bubbles(t){return '<div class="bubbles">'+t.messages.map(([out,msg])=>'<div class="bubble '+(out?'out':'')+'">'+esc(msg)+'</div>').join('')+'</div>'}
 function openThread(id){current=id;const t=data.threads.find(x=>x.id===id);modal(t.name,badge(t.status)+(t.agentName?' <span class="badge">'+esc(t.agentName)+'</span>':'')+(t.trip?'<button class="link" onclick="editQuote('+id+')">Ficha da viagem</button>':'')+bubbles(t)+(t.status===2?'<form class="compose" id="compose"><input name="text" maxlength="2000" required aria-label="Sua resposta" placeholder="Escreva uma resposta…"><button class="btn">Enviar</button></form><p style="margin-top:12px"><button class="link" onclick="statusTo(3)">Concluir atendimento</button></p>':'<button class="btn" onclick="statusTo(2)">'+(t.status===3?'Reabrir conversa':'Assumir atendimento')+'</button>'));const form=dc.querySelector('form');if(form)form.onsubmit=e=>{e.preventDefault();const v=form.elements.text.value.trim();if(v){t.messages.push([1,v]);save();render();openThread(id)}}}
@@ -299,7 +337,7 @@ async function answer(topic){const team=data.team, first=team.find(a=>a.licensed
  case 'team':return ['Sua equipe tem '+team.length+' agente(s), com '+team.filter(a=>a.licensed&&!a.paused).length+' ativo(s) em teste. Em Configurar, você pode ajustar as perguntas e o tom de voz.',['Gerenciar agentes',()=>go('agent')]];
  case 'auto':return ['Abra WhatsApp e confira a conexão. Com o número conectado, escolha Configurar resposta automática e defina a palavra que inicia a resposta.',['Consultar conexão',()=>go('channel')]];
  case 'wa':return ['Abra WhatsApp para consultar a sessão. Clique em Conectar WhatsApp e escaneie pelo menu Aparelhos conectados do telefone.',['Abrir WhatsApp',()=>go('channel')]];
- case 'plan':return ['A mensalidade simulada desta equipe é '+money(monthly())+'. Em Assinatura você pode conferir a composição do plano.',['Ver assinatura',()=>go('billing')]];
+ case 'plan':return ['A mensalidade simulada desta equipe é '+money(monthly())+'. Em Configurações, na aba Assinatura, você pode conferir a composição do plano.',['Ver assinatura',()=>go('billing')]];
  case 'quotes':return [data.threads.some(t=>t.trip)?'Há fichas de viagem no portal. Abra Cotações para consultar o pedido e atualizar a etapa.':'Ainda não há fichas de viagem neste painel. Elas aparecem quando o agente de viagens encaminha um pedido.',['Ver conversas',()=>inbox()]];
  default:return ['Você está em '+currentPage()+'. Posso consultar a fila, mostrar sua equipe, iniciar um teste ou orientar a conexão do WhatsApp.']
  }}
@@ -322,5 +360,10 @@ function route(q){
 async function ask(message){const value=message.trim();if(!value)return;line(value,true);input.value='';previous=route(fold(value));try{const [text,action]=await answer(previous);line(text,false,action)}catch(error){line(error.message,false)}}
 form.onsubmit=e=>{e.preventDefault();ask(input.value)};
 toggle.onclick=()=>{const open=toggle.getAttribute('aria-expanded')!=='true';toggle.setAttribute('aria-expanded',String(open));document.getElementById('dot-body').hidden=!open;document.body.classList.toggle('dot-expanded',open);toggle.querySelector('.dot-sign').textContent=open?'−':'+'};
+document.addEventListener('click', event => {
+  if (!event.target.closest('[data-open-dot]')) return;
+  if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+  input.focus();
+});
 line('Oi, eu sou o Dot. Quer saber quem está esperando ou testar um agente comigo?');suggest();
 })();
