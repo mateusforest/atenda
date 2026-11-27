@@ -2,7 +2,8 @@ import {createHash} from 'node:crypto';
 import {incomingTime} from './automatic.mjs';
 import {workerToken} from '../lib/official-channel.mjs';
 import {privateJid,fault} from '../lib/wa-transport.mjs';
-import {requestsTeam} from '../dist/agent-rules.mjs';
+import {promisesHandoff,requestsTeam} from '../dist/agent-rules.mjs';
+import {requestSummary} from '../lib/request-summary.mjs';
 
 const dateFormat=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Sao_Paulo'});
 const namePattern=/^(?:meu nome é|me chamo|pode me chamar de)\s+([\p{L}][\p{L} '\-]{1,55})[.!]?$/iu;
@@ -18,6 +19,9 @@ export function confirmedName(rows){
   return '';
 }
 export function acceptedHandoff(text,prior){
+  if(/\bn[aã]o\s+(?:quero|prefiro|preciso|encaminhe|chame)\b/i.test(text||''))return false;
+  const offer=/\b(?:quer|gostaria|prefere|deseja|posso|podemos)\b[^.!?]{0,100}\b(?:equipe|atendente|humano|consultor)\b/i;
+  if(offer.test(prior||'')&&/^\s*(?:sim|quero|pode|pode sim|sim pode|por favor|pode ser|claro)(?:[, ]+por favor)?[.!\s]*$/i.test(text||''))return true;
   return /(?:equipe|atendente|consultor)/i.test(prior||'')&&/\b(?:quero que (?:eles|elas|a equipe)|prefiro (?:eles|a equipe)|pode (?:me )?encaminhar|sim[, ]+pode (?:me )?(?:chamar|encaminhar))\b/i.test(text||'');
 }
 async function publish(owner,event){
@@ -43,7 +47,7 @@ export function serviceRecords({db,sessionId,gateway,voice,save=publish}){
         if(!privateJid.test(chat.jid)||!(incomingTime(chat.time)>=since))continue;
         try{
           const handoff=db.prepare('select active,message from team_handoffs where session=? and jid=?').get(sessionId,chat.jid);
-          const stamp=JSON.stringify([chat.time,chat.preview,chat.fromMe,handoff?.active,handoff?.message,chat.name]);
+          const stamp=JSON.stringify(['resumo-v2',chat.time,chat.preview,chat.fromMe,handoff?.active,handoff?.message,chat.name]);
           const digest=createHash('sha256').update(stamp).digest('hex');
           if(db.prepare('select stamp from service_cursor where session=? and jid=?').get(sessionId,chat.jid)?.stamp===digest)continue;
           const history=await gateway('chat/'+session+'/'+encodeURIComponent(chat.jid));
@@ -51,13 +55,15 @@ export function serviceRecords({db,sessionId,gateway,voice,save=publish}){
           const last=rows.at(-1);
           if(!last)continue;
           db.prepare('insert or replace into service_chat values(?,?,?,?,?,?)').run(sessionId,chat.jid,chat.name||chat.notify||'',String(last.text||'[Mídia]').slice(0,160),incomingTime(last.timestamp),last.fromMe?1:0);
-          // Repair a previously promised transfer once, without sending another message.
-          const inboundIndex=rows.findLastIndex(r=>!r.fromMe);
-          const request=rows[inboundIndex]?.text;
-          const asked=requestsTeam(request,JSON.parse(db.prepare('select profile from automatic_agent where session=?').get(sessionId)?.profile||'{}').handoff)||acceptedHandoff(request,rows.slice(0,inboundIndex).findLast(r=>r.fromMe)?.text);
-          const promised=asked&&last.fromMe&&/\b(?:vou encaminhar|encaminhei) (?:o |seu |a )?(?:pedido|atendimento|conversa).*?(?:equipe|atendente)/i.test(last.text||'');
-          if(promised&&!handoff)db.prepare('insert or ignore into team_handoffs values(?,?,?,1)').run(sessionId,chat.jid,last.keyId);
-          const team=!!(handoff?.active||promised&&!handoff),name=confirmedName(rows);
+          // Fetch the marker again after reading history: a human may have resumed this chat.
+          const mark=db.prepare('select active,message from team_handoffs where session=? and jid=?').get(sessionId,chat.jid);
+          const after=mark?rows.findIndex(r=>r.keyId===mark.message)+1:0;
+          const terms=JSON.parse(db.prepare('select profile from automatic_agent where session=?').get(sessionId)?.profile||'{}').handoff;
+          const trigger=!mark?.active&&rows.slice(after).find((r,i)=>r.fromMe
+            ? promisesHandoff(r.text)&&db.prepare('select 1 from sends where key_id=?').get(r.keyId)
+            : requestsTeam(r.text,terms)||acceptedHandoff(r.text,rows.slice(0,after+i).findLast(m=>m.fromMe)?.text));
+          if(trigger)db.prepare('insert or replace into team_handoffs values(?,?,?,1)').run(sessionId,chat.jid,trigger.keyId);
+          const team=!!(mark?.active||trigger),name=confirmedName(rows);
           const days=Map.groupBy(rows,r=>dateFormat.format(incomingTime(r.timestamp)));
           for(const [day,messages] of days){
             const inbound=messages.filter(m=>!m.fromMe);
@@ -65,7 +71,7 @@ export function serviceRecords({db,sessionId,gateway,voice,save=publish}){
             const texts=inbound.map(m=>m.text|| (m.type==='AUDIO'?'[Áudio]':'[Mídia]'));
             const quote=texts.some(t=>/\b(cota[çc][ãa]o|or[çc]amento|proposta)\b/i.test(t));
             const teamToday=team&&day===dateFormat.format(incomingTime(last.timestamp));
-            const event={session:sessionId,jid:chat.jid,day,time:incomingTime(messages.at(-1).timestamp),contactName:name||chat.name||chat.notify||inbound.at(-1).pushName,confirmedName:!!name,email:texts.join(' ').match(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/i)?.[0],summary:texts.slice(-15).join('\n').slice(-2400),withTeam:teamToday,task:quote?'Preparar cotação':teamToday?'Retornar atendimento':''};
+            const event={session:sessionId,jid:chat.jid,day,time:incomingTime(messages.at(-1).timestamp),contactName:name||chat.name||chat.notify||inbound.at(-1).pushName,confirmedName:!!name,email:texts.join(' ').match(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/i)?.[0],summary:requestSummary(texts.join('\n'),name||chat.name),withTeam:teamToday,task:quote?'Preparar cotação':teamToday?'Retornar atendimento':''};
             await save({id:ownerId,email:process.env.WA_OWNER_EMAIL},event);
           }
           db.prepare('insert or replace into service_cursor values(?,?,?)').run(sessionId,chat.jid,digest);

@@ -60,7 +60,7 @@ function conversationRow(item, open) {
   const copy = document.createElement('span'), heading = document.createElement('strong'), preview = document.createElement('span');
   copy.className = 'wa-copy';
   heading.textContent = name;
-  if(item.withTeam)heading.append(' · Com a equipe');
+  if(item.withTeam)heading.append(' · Com equipe');
   preview.textContent = item.preview === '[Mensagem de mídia]' ? 'Mensagem de mídia' : item.preview;
   copy.append(heading, preview);
   button.append(contactAvatar(item), copy);
@@ -114,7 +114,7 @@ class WhatsAppInbox extends HTMLElement {
     this.selected=null;
     this.innerHTML = `
       <div class="wa-toolbar"><h2>WhatsApp</h2><select aria-label="Filtrar conversas do WhatsApp">
-        <option value="all">Todas as conversas</option><option value="waiting">Aguardando resposta</option><option value="answered">Respondidas</option><option value="team">Com a equipe</option></select><label class="wa-search">
+        <option value="all">Todas as conversas</option><option value="waiting">Aguardando resposta</option><option value="answered">Respondidas</option><option value="team">Com equipe</option></select><label class="wa-search">
         <svg class="ico" aria-hidden="true" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
         <input type="search" aria-label="Buscar conversa no WhatsApp" placeholder="Buscar nome ou número">
       </label></div>
@@ -123,7 +123,7 @@ class WhatsAppInbox extends HTMLElement {
       <section class="wa-history" hidden><button type="button" class="link">‹ Voltar às conversas</button>
         <h3 tabindex="-1"></h3><div class="bubbles" aria-label="Histórico" tabindex="0"></div>
         <div class="wa-toolbar wa-agent"><label class="field">Agente da sugestão<select></select></label><button type="button" class="btn light">Sugerir resposta</button></div>
-        <div data-team hidden><strong>Com a equipe</strong> · Responda abaixo ou <button class="link" type="button">retome com o agente</button>.</div>
+        <div data-team hidden><strong>Com equipe</strong> · Responda abaixo ou <button class="link" type="button">retome com o agente</button>.</div>
         <form class="compose"><input aria-label="Sua resposta no WhatsApp" placeholder="Escreva uma resposta…" maxlength="4000" required autocomplete="off"><button class="btn">Enviar</button></form>
         <output role="status"></output></section>`;
     this.search = this.querySelector('[type=search]');

@@ -4,6 +4,18 @@
   const contracts={authorized:'Autorizada',pending:'Aguardando autorização',canceled:'Cancelada',rejected:'Recusada',expired:'Expirada',creating:'Em contratação',review:'Em análise'};
   const events={support:'Resposta de suporte',welcome:'Boas-vindas',billing:'Aviso de mensalidade'};
   let offset=0,channel={},timer,busy=false;
+  const navigation=[...document.querySelectorAll('.sidebar nav a')];
+  function selectPage(){
+    const current=navigation.find(link=>link.hash===location.hash)||navigation[0];
+    for(const link of navigation){
+      const selected=link===current;
+      el(link.hash.slice(1)).hidden=!selected;
+      if(selected)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');
+    }
+    el('page-title').textContent=current.textContent;
+    window.scrollTo(0,0);
+  }
+  selectPage();addEventListener('hashchange',selectPage);
   async function api(action,body){
     const res=await fetch('/api/admin?action='+action,{method:body?'POST':'GET',cache:'no-store',
       headers:{Authorization:'Bearer '+await AtendaAuth.access(),'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
@@ -19,6 +31,7 @@
       el('workspace').hidden=false;el('access').textContent='';el('account-message').textContent='';
       el('count').textContent=d.total+' '+(d.total===1?'conta':'contas');
       el('m-accounts').textContent=d.total;
+      el('overview-billing').textContent=d.environment==='sandbox'?'Homologação':d.billing?.pix||d.billing?.card?'Em produção':'Aguardando credenciais';
       for(const metric of ['leads','team','tasks'])el('m-'+metric).textContent=d.metrics?.[metric]??'—';
       el('billing-mode').textContent=d.environment==='sandbox'?'Homologação. Os meios de pagamento abaixo usam a configuração de testes.':'Produção. Os meios abaixo dependem do credenciamento da loja.';
       el('pix-state').textContent='Pix Automático Sicredi · '+(d.billing?.pix?'Credenciais configuradas':'Aguardando credenciais');
@@ -42,6 +55,7 @@
     try{
       channel=await api('channel',op?{op}:undefined);
       el('state').textContent=(states[channel.state]||'Indisponível')+(channel.state==='connected'&&!channel.enabled?' · Pausado':'');
+      el('overview-wa').textContent=el('state').textContent;
       el('connect').hidden=channel.state==='connected'||channel.state==='pairing';
       el('toggle').hidden=channel.state!=='connected';el('toggle').textContent=channel.enabled?'Pausar automação':'Retomar automação';
       el('number').textContent=channel.number?'Número conectado: +'+channel.number.replace(/^\+/,''):'';
@@ -52,13 +66,13 @@
       }));
       if(!channel.activity?.length){const li=document.createElement('li');li.textContent='Nenhum envio registrado.';el('activity').append(li)}
       el('channel-message').textContent=channel.issue||'';
-    }catch(e){if(denial(e))return;el('state').textContent='Conector indisponível';el('pair').hidden=true;el('channel-message').textContent=e.message}
+    }catch(e){if(denial(e))return;el('overview-wa').textContent=el('state').textContent='Conector indisponível';el('pair').hidden=true;el('channel-message').textContent=e.message}
     finally{busy=false;for(const id of ['connect','toggle','refresh'])el(id).disabled=false;
       if(!el('workspace').hidden)timer=setTimeout(()=>sync(),['pairing','waiting'].includes(channel.state)?4000:45000)}
   }
   el('connect').onclick=()=>sync('connect');el('toggle').onclick=()=>sync(channel.enabled?'pause':'resume');el('refresh').onclick=()=>sync();
   el('previous').onclick=()=>accounts(Math.max(0,offset-25));el('next').onclick=()=>accounts(offset+25);el('reload').onclick=()=>accounts(offset);
-  const keyState=d=>{el('key-state').textContent=d.configured?'Chave configurada':'Aguardando chave'};
+  const keyState=d=>{el('overview-luna').textContent=el('key-state').textContent=d.configured?'Chave configurada':'Aguardando chave'};
   el('key-form').onsubmit=async event=>{
     event.preventDefault();
     const field=el('luna-key'),button=event.submitter||el('key-form').querySelector('button');

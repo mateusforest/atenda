@@ -6,6 +6,11 @@ import {receiver} from '../gateway/receiver.mjs';
 import {automaticAgent} from '../gateway/automatic.mjs';
 import {confirmedName,serviceRecords} from '../gateway/service-records.mjs';
 import {mergeService} from '../lib/whatsapp-crm.mjs';
+import {requestSummary} from '../lib/request-summary.mjs';
+
+test('a solicitação inclui os detalhes da viagem e omite saudações e URLs com credenciais',()=>{
+  assert.equal(requestSummary('oi\nViagem para a Itália\nVacaria RS\nhttps://example.test/?api_key=segredo\nMateus\nopa\nVacaria RS','Mateus'),'Viagem para a Itália\nVacaria RS');
+});
 
 test('recupera a cotação respondida, registra voz e fila e preserva edições em novas entregas',async()=>{
   const db=new DatabaseSync(':memory:'),owner={id:randomUUID(),email:'owner@test.invalid'},session='piloto',jid='5511000000000@s.whatsapp.net';

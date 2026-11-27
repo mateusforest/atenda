@@ -36,8 +36,15 @@ export function requestsTeam(text,terms){
   return fold(text).split(/\b(?:mas|porem|agora sim)\b/).some(part=>{
     const phrase=part.trim();
     if(/\bnao (?:quero|preciso|desejo|me transfira|me encaminhe|chame)\b/.test(phrase))return false;
-    return /^(?:atendente|humano|humana|atendimento humano|suporte humano)(?: por favor)?$/.test(phrase)||request.test(phrase);
+    return /^(?:(?:a |sua )?equipe|atendente|humano|humana|atendimento humano|suporte humano)(?: por favor)?$/.test(phrase)
+      || /\b(?:quero|gostaria|preciso|prefiro) que (?:a |sua )?equipe (?:me |nos )?(?:atenda|ajude|oriente|responda|ligue|entre em contato)\b/.test(phrase)
+      || request.test(phrase);
   });
+}
+export function promisesHandoff(text){
+  const phrase=fold(text);
+  return /\b(?:vou (?:te |lhe |me )?(?:encaminhar|transferir|passar)|encaminhei|transferi)\b.{0,85}\b(?:equipe|atendente|consultor|humano)\b/.test(phrase)
+    && !/\b(?:nao|se quiser|se preferir|se voce)\b/.test(phrase);
 }
 export function openingForGreeting(profile,history){
   if(history.some(m=>m.fromMe))return '';

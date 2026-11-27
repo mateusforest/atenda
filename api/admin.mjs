@@ -65,7 +65,7 @@ export default async function admin(req,res){
     if(action==='overview'&&req.method==='GET'){
       const offset=Number(params.get('offset')||0);
       if(!Number.isSafeInteger(offset)||offset<0)throw fault(400,'Página inválida.');
-      await registerAccount(user);return send(200,await dashboard(offset));
+      await registerAccount(user);return send(200,await dashboard(offset,user.id));
     }
     if(action==='channel'&&(req.method==='GET'||req.method==='POST'&&['connect','pause','resume'].includes(body.op))){
       return send(200,await callWindows({op:'official',action:req.method==='GET'?'status':body.op,owner:{id:user.id,email:user.email}}));

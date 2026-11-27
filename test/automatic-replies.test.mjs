@@ -18,7 +18,8 @@ test('o conector atende sem navegador, preserva a fila e cancela rascunhos ultra
     return rows;
   };
   const profile={name:'Luna',goal:'Orientar',greeting:'Olá, sou {nome}.',handoff:'devolução'};
-  const automatic=automaticAgent({db,sessionId:'s',gateway,execute:cmd=>execute(cmd),draft:async()=>{onDraft();return {text:'Orientação do agente.'}}});
+  let draftText='Orientação do agente.';
+  const automatic=automaticAgent({db,sessionId:'s',gateway,execute:cmd=>execute(cmd),draft:async()=>{onDraft();return {text:draftText}}});
   const execute=receiver({db,sessionId:'s',session:'s',ownerEmail:owner.email,automatic,gateway});
   const command=(mode,revision)=>execute({op:'automatic',mode,revision,owner,agent,profile});
   incoming('Pedido antigo',-60000);await automatic.tick();assert.equal(sent.length,0);
@@ -33,13 +34,20 @@ test('o conector atende sem navegador, preserva a fila e cancela rascunhos ultra
   await execute({op:'release',owner,jid,messageId:rows.at(-1).keyId});await automatic.tick();assert.equal(sent.length,2);
   incoming('Outra dúvida');onDraft=()=>incoming('Espere um momento');await automatic.tick();assert.equal(sent.length,2);
   onDraft=()=>{};await automatic.tick();assert.equal(sent.length,3);
+  draftText='Vou encaminhar à equipe seu pedido.';
+  incoming('Quais são os horários?');await automatic.tick();
+  assert.match(sent.at(-1),/^Você quer que eu encaminhe/);
+  rows.push({fromMe:true,content:sent.at(-1),keyId:randomUUID(),timestamp:Date.now()+2000});
+  incoming('Sim');await automatic.tick();assert.equal((await execute({op:'history',owner,jid})).withTeam,true);
+  incoming('Tenho mais uma dúvida');await automatic.tick();assert.equal(sent.length,4);
+  await execute({op:'release',owner,jid,messageId:rows.at(-1).keyId});
   incoming('Mais uma dúvida');onDraft=()=>automatic.configure({mode:'pause',revision:active.revision,owner});
-  await automatic.tick();await automatic.tick();assert.equal(sent.length,3);assert.equal(automatic.status().enabled,false);
+  await automatic.tick();await automatic.tick();assert.equal(sent.length,4);assert.equal(automatic.status().enabled,false);
   db.close();
 });
 
 test('pedidos de equipe e termos definidos pela empresa',()=>{
-  for(const text of ['Pode me passar para um atendente?', 'Pode me transferir para a equipe?', 'Quero falar com alguém da equipe','Humano, por favor'])
+  for(const text of ['Pode me passar para um atendente?', 'Pode me transferir para a equipe?', 'Quero falar com alguém da equipe','Humano, por favor','Quero que a equipe me ajude','Equipe, por favor'])
     assert.equal(requestsTeam(text,''),true,text);
   for(const text of ['O corpo humano','Não preciso de um atendente','Não quero falar com uma pessoa'])
     assert.equal(requestsTeam(text,''),false,text);

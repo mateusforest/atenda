@@ -1,6 +1,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {privateJid,uuid,fault} from '../lib/wa-transport.mjs';
 import {workerToken} from '../lib/official-channel.mjs';
+import {promisesHandoff} from '../dist/agent-rules.mjs';
 
 export async function cloudDraft(profile,history){
   const r=await fetch('https://atenda-amber.vercel.app/api/admin?action=auto-reply',{
@@ -64,7 +65,8 @@ export function automaticAgent({db,sessionId,gateway,execute,draft=cloudDraft}){
           const context=await execute({...args,op:'suggestContext',messageId:last.keyId});
           if(context.handoff)continue;
           const answer=context.text?context:await draft({...profile,needsName:!!context.needsName},context.context);
-          await execute({...args,op:'send',requestId,text:answer.text,expectedMessageId:last.keyId,autoRevision:row.revision});
+          const text=promisesHandoff(answer.text)?'Você quer que eu encaminhe seu atendimento para a equipe?':answer.text;
+          await execute({...args,op:'send',requestId,text,expectedMessageId:last.keyId,autoRevision:row.revision});
         }catch(e){
           if(e.status===409)continue;
           failure=e.status?e.message:'Não foi possível preparar a resposta automática.';
