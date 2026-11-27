@@ -7,8 +7,14 @@ class AtendaWhatsApp extends HTMLElement {
     this.image.alt = 'QR Code de pareamento do WhatsApp';
     this.image.width = 280;
     this.image.hidden = true;
+    this.historyChoice = document.createElement('input');
+    this.historyChoice.type = 'checkbox';
+    this.historyChoice.checked = false;
+    this.historyLabel = document.createElement('label');
+    this.historyLabel.append(this.historyChoice, ' Importar o histórico de conversas deste número');
+    this.historyLabel.hidden = true;
     this.actions = document.createElement('div');
-    this.replaceChildren(this.message, this.image, this.actions);
+    this.replaceChildren(this.message, this.image, this.historyLabel, this.actions);
     this.refresh();
   }
 
@@ -38,7 +44,8 @@ class AtendaWhatsApp extends HTMLElement {
       const headers = account ? {Authorization:'Bearer '+await AtendaAuth.access()} : {'X-Atenda-Panel':'1'};
       const response = await fetch(account ? '/api/inbox?view=status' : '/api/whatsapp', {
         method: connect ? 'POST' : 'GET',
-        headers,
+        headers: connect ? {...headers,'Content-Type':'application/json'} : headers,
+        body: connect ? JSON.stringify({importHistory:this.historyChoice.checked}) : undefined,
         cache: 'no-store',
         signal: request.signal
       });
@@ -56,6 +63,7 @@ class AtendaWhatsApp extends HTMLElement {
         offline: 'O WhatsApp está desconectado no Windows.',
         connected: 'Conectado'
       };
+      this.historyLabel.hidden = account || !['missing','stopped'].includes(result.state);
       this.message.textContent = messages[result.state] || 'Estado de sessão desconhecido.';
       this.image.hidden = result.state !== 'pairing';
       if (this.image.hidden) this.image.removeAttribute('src');

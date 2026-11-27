@@ -1,0 +1,128 @@
+--- a/src/app/api/sessions/[sessionId]/[action]/route.ts
++++ b/src/app/api/sessions/[sessionId]/[action]/route.ts
+@@ -41,7 +41,7 @@
+                 return NextResponse.json({ status: true, message: "Pairing code generated", data: { pairingCode } });
+ 
+             case "start":
+-                await waManager.startSession(sessionId);
++                await waManager.startSession(sessionId, body?.importHistory);
+                 break;
+             case "stop":
+                 await waManager.stopSession(sessionId);
+--- a/src/modules/whatsapp/manager.ts
++++ b/src/modules/whatsapp/manager.ts
+@@ -129,7 +129,7 @@
+         }
+     }
+ 
+-    async startSession(sessionId: string) {
++    async startSession(sessionId: string, importHistory?: boolean) {
+         // If already running, do nothing
+         const existingInstance = this.sessions.get(sessionId);
+         if (existingInstance && existingInstance.status === "CONNECTED") {
+@@ -138,6 +138,15 @@
+ 
+         const session = await prisma.session.findUnique({ where: { sessionId } });
+         if (!session) throw new Error("Session not found");
++
++        // Record the choice before the socket can receive pairing data.
++        const config = (session.config && typeof session.config === "object" && !Array.isArray(session.config)) ? session.config : {};
++        if (session.status === "STOPPED" || session.status === "LOGGED_OUT") {
++            const since = session.status !== "LOGGED_OUT" && typeof config.historySince === "number"
++                ? config.historySince : Date.now();
++            const enabled = importHistory === true || (importHistory === undefined && session.status !== "LOGGED_OUT" && config.importHistory === true);
++            await prisma.session.update({where:{sessionId}, data:{config:{...config, importHistory:enabled, historySince:since}}});
++        }
+ 
+         // Create fresh instance
+         let instance = this.sessions.get(sessionId);
+--- a/src/modules/whatsapp/instance.ts
++++ b/src/modules/whatsapp/instance.ts
+@@ -68,7 +68,7 @@
+             },
+             browser: ["Ubuntu", "Chrome", "20.0.04"],
+             markOnlineOnConnect: botConfig?.alwaysOnline ?? true,
+-            syncFullHistory: true,
++            syncFullHistory: this.config.importHistory === true,
+         });
+ 
+         // Attach Lekzo Baileys compatible helper methods
+@@ -99,10 +99,12 @@
+         } as any;
+ 
+         // Bind Store for DB Sync
+-        bindSessionStore(this.socket, this.sessionId, this.io);
++        const historySince = this.config.importHistory === true ? null
++            : (Number.isFinite(this.config.historySince) ? this.config.historySince : sessionData.createdAt.getTime());
++        bindSessionStore(this.socket, this.sessionId, this.io, historySince);
+ 
+         // Bind Contact Sync
+-        bindContactSync(this.socket, this.sessionId);
++        bindContactSync(this.socket, this.sessionId, this.config.importHistory === true);
+ 
+         this.socket.ev.on("creds.update", saveCreds);
+ 
+--- a/src/modules/whatsapp/store/index.ts
++++ b/src/modules/whatsapp/store/index.ts
+@@ -8,7 +8,8 @@
+ import { Server } from "socket.io";
+ import { logger } from "@/lib/logger";
+ 
+-export const bindSessionStore = (sock: WASocket, sessionId: string, io: Server | null) => {
++export const bindSessionStore = (sock: WASocket, sessionId: string, io: Server | null, historySince: number | null) => {
++    const allowed = (msg: WAMessage) => historySince === null || Number(msg.messageTimestamp) >= Math.floor(historySince / 1000);
+     // Set start time for uptime command
+     setSessionStartTime(sessionId);
+ 
+@@ -31,6 +32,8 @@
+ 
+     // Handle Messages
+     sock.ev.on('messages.upsert', async ({ messages, type }) => {
++        messages = messages.filter(allowed);
++        if (!messages.length) return;
+         // Process all message types: notify, append, and history sync
+         if (type !== 'notify' && type !== 'append') {
+             // For history sync, we still want to save messages
+@@ -92,6 +95,8 @@
+ 
+     // Handle Message History Sync (when connecting for the first time or syncing)
+     sock.ev.on('messaging-history.set', async ({ messages, chats, contacts, isLatest }) => {
++        messages = (messages || []).filter(allowed);
++        if (!messages.length) return;
+         logger.info("Store", `History sync: ${messages?.length || 0} messages, ${chats?.length || 0} chats, ${contacts?.length || 0} contacts, latest: ${isLatest}`);
+ 
+         // Ensure we have the database session ID
+--- a/src/modules/whatsapp/store/contacts.ts
++++ b/src/modules/whatsapp/store/contacts.ts
+@@ -6,7 +6,7 @@
+  * Sync contacts from WhatsApp to database.
+  * Uses proper Baileys events for syncing and correct Session.id foreign key.
+  */
+-export function bindContactSync(sock: WASocket, sessionId: string) {
++export function bindContactSync(sock: WASocket, sessionId: string, importHistory: boolean) {
+     // First, get the database Session ID (cuid)
+     let dbSessionId: string | null = null;
+     
+@@ -60,6 +60,7 @@
+ 
+     // Also listen for messaging events to auto-create contacts
+     sock.ev.on('messaging-history.set', async ({ chats, contacts, messages, isLatest }) => {
++        if (!importHistory) return;
+         if (!dbSessionId) {
+             const session = await prisma.session.findUnique({ where: { sessionId }, select: { id: true } });
+             if (!session) return;
+--- a/src/modules/whatsapp/chat.service.ts
++++ b/src/modules/whatsapp/chat.service.ts
+@@ -51,10 +51,10 @@
+             INNER JOIN (
+                 SELECT remoteJid, MAX(timestamp) as max_ts
+                 FROM \`Message\`
+-                WHERE sessionId = ?
++                WHERE sessionId = ? AND (type <> 'TEXT' OR CHAR_LENGTH(TRIM(COALESCE(content,''))) > 0)
+                 GROUP BY remoteJid
+             ) m2 ON m1.remoteJid = m2.remoteJid AND m1.timestamp = m2.max_ts
+-            WHERE m1.sessionId = ?
++            WHERE m1.sessionId = ? AND (m1.type <> 'TEXT' OR CHAR_LENGTH(TRIM(COALESCE(m1.content,''))) > 0)
+             ${before ? 'AND m1.timestamp < ?' : ''}
+             ${filter && Object.hasOwn(CHAT_FILTER_SQL, filter) ? CHAT_FILTER_SQL[filter] : ''}
+             ORDER BY m1.timestamp DESC

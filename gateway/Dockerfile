@@ -3,6 +3,11 @@
 FROM alpine/git AS source
 RUN git init /src && git -C /src fetch --depth=1 https://github.com/mrifqidaffaaditya/WA-AKG.git e8dc2a902d65d6a9434565fcf3d12c0c5f2c6932 && git -C /src checkout --detach FETCH_HEAD && rm -rf /src/.git
 
+# Accept both the repository root and gateway/ as Docker build contexts.
+RUN --mount=type=bind,target=/context cd /src && \
+    if test -f /context/gateway/history-policy.patch; then git apply /context/gateway/history-policy.patch; \
+    else git apply /context/history-policy.patch; fi
+
 FROM node:26-alpine AS builder
 RUN apk add --no-cache openssl ca-certificates
 WORKDIR /app

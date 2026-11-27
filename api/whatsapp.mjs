@@ -26,7 +26,7 @@ async function findSession(){
  return rows.find(row=>row.sessionId===WA_AKG_SESSION);
 }
 
-async function state(connect=false){
+async function state(connect=false,importHistory=false){
  let row=await findSession();
  if(!row){
    if(!connect)return {state:'missing'};
@@ -41,7 +41,7 @@ async function state(connect=false){
  // O WA-AKG só troca STOPPED por SCAN_QR quando o primeiro QR chega.
  if(idle.has(row.status) && Date.now()-startedAt>20000){
    if(!connect)return {state:'stopped'};
-   await gateway(sessionPath+'/start',undefined,'POST');
+   await gateway(sessionPath+'/start',{importHistory},'POST');
    startedAt=Date.now();
  }
  try{
@@ -55,8 +55,8 @@ async function state(connect=false){
  }
 }
 
-function connectSession(){
- connecting??=state(true).finally(()=>{connecting=undefined});
+function connectSession(importHistory){
+ connecting??=state(true,importHistory).finally(()=>{connecting=undefined});
  return connecting;
 }
 
@@ -99,6 +99,7 @@ export async function handleWhatsApp(req,res){
    if(body.action==='disable'?!!verified:verified?.response!==body.response.trim())return json(502,{error:'O gateway ainda não confirmou a alteração.'});
    return json(200,{enabled:!!verified});
  }
- return json(200,await (req.method==='POST'?connectSession():state()));
+ const input=typeof req.body==='string'?JSON.parse(req.body):req.body;
+ return json(200,await (req.method==='POST'?connectSession(input?.importHistory===true):state()));
  }catch(e){return json(502,{error:e.status?e.message:'Não foi possível consultar a instância WA-AKG.'})}
 }
