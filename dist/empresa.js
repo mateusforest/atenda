@@ -31,12 +31,14 @@ const Empresa = (() => {
       const result=await auth('token?grant_type=password','POST',{email,password:v.old});takeSession(result);await auth('user','PUT',{password:v.next},AtendaAuth.session.access_token);f.reset();f.querySelector('output').textContent='Senha atualizada.';
     })}}
   function settings(){
-    const names=['Empresa','Perfil e acesso','Financeiro'],p=state.profile;
+    const names=['Empresa','Perfil e acesso','Financeiro','Assinatura'],p=state.profile;
+    const header = title('Configurações','Gerencie os dados da empresa, seu acesso e a assinatura.') + tabs(choices(names),settingsTab,'settingsTab');
+    if (settingsTab === 'Assinatura') return header + subscription();
     let body='';
     if(settingsTab==='Empresa')body=fld('Nome da empresa','company',p.company,'text','required')+fld('Setor de atuação','sector',p.sector)+fld('Telefone comercial','phone',p.phone,'tel')+fld('Site','website',p.website,'url')+fld('Sobre a empresa · informação para o cliente','about',p.about,'area')+fld('Orientações internas para a equipe e os agentes','guidelines',p.guidelines,'area');
     if(settingsTab==='Perfil e acesso')body=fld('Seu nome','contact',p.contact)+fld('Cargo ou função','role',p.role)+fld('Telefone do perfil','profilePhone',p.profilePhone,'tel')+fld('E-mail de acesso','accountEmail',email,'email','disabled')+'<div class="ws-buttons ws-full">'+btn('Alterar senha','password')+btn('Sair da conta','logout')+'</div>';
     if(settingsTab==='Financeiro')body=fld('CPF ou CNPJ de faturamento','taxId',p.taxId)+fld('E-mail financeiro','billingEmail',p.billingEmail,'email')+fld('Faturamento mensal informado (R$)','revenue',p.revenue,'number','min="0" step=".01"')+sel('Meio de pagamento preferido','paymentMethod',choices(['','Pix','Boleto','Cartão','Transferência']),p.paymentMethod)+'<div class="ws-full">'+btn('Ver pagamentos do painel','payments')+'</div>';
-    return title('Configurações','Dados da empresa, perfil de acesso e preferências financeiras.')+tabs(choices(names),settingsTab,'settingsTab')+(email?'<form class="card ws-fields" data-wform="profile">'+body+'<div class="ws-full">'+submit('Salvar alterações')+'</div></form>':guest());
+    return header+(email?'<form class="card ws-fields" data-wform="profile">'+body+'<div class="ws-full">'+submit('Salvar alterações')+'</div></form>':guest());
   }
   function recordList(){
     const s=section,q=searchText.trim().toLocaleLowerCase('pt-BR');
@@ -125,5 +127,5 @@ const Empresa = (() => {
   });
   document.addEventListener('input',e=>{if(e.target.matches('[data-wsearch]')){searchText=e.target.value;document.getElementById('ws-rows').innerHTML=recordList()}});
   document.addEventListener('submit',e=>{const f=e.target;if(f.dataset.wform!=='profile')return;e.preventDefault();progress(f,async()=>{await api('profile',Object.fromEntries(new FormData(f)));document.querySelector('.bar strong').textContent=state.profile.company||data.workspace;f.querySelector('output').textContent='Alterações salvas.'})});
-  return {settings,integrations,panel,agentTools,bindTrial,fact,runForm,allowed,init:reload,get company(){return state.profile.company},get guidelines(){return email?state.profile.guidelines:''},get privatePage(){return isPrivatePage()},get logged(){return !!email}};
+  return {settings,selectSubscription(){settingsTab='Assinatura'},integrations,panel,agentTools,bindTrial,fact,runForm,allowed,init:reload,get company(){return state.profile.company},get guidelines(){return email?state.profile.guidelines:''},get privatePage(){return isPrivatePage()},get logged(){return !!email}};
 })();
