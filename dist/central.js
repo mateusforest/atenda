@@ -100,8 +100,32 @@ function removeDialog(id){const a=findMember(id);if(a===data.team[0]||!a.license
 function removeLicense(id){const a=findMember(id);if(a!==data.team[0]){a.licensed=false;a.paused=true;save()}dialog.close();go('billing')}
 function projectDialog(){const p=data.project||{};modal('Projeto personalizado','<form id="projectForm" class="stack">'+field('Empresa','company',p.company||data.workspace)+field('Quantidade de agentes','size',p.size||'2').replace('maxlength="240"','type="number" min="1" max="999"')+field('O que sua equipe precisa automatizar?','scope',p.scope||'',true)+'<p class="muted">Solicitação de demonstração salva neste navegador. O orçamento depende do escopo.</p><button class="btn">Salvar solicitação</button></form>');document.querySelector('#projectForm').onsubmit=e=>{e.preventDefault();data.project=Object.fromEntries(new FormData(e.target));data.workspace=data.project.company;save();dialog.close();go('billing')}}
 
-function go(p){page=p;render()}
-function nav(){if(data.threads.some(t=>t.trip))labels.quotes="Cotações";Object.assign(paths,{billing:paths.quotes,panel:'M3 5h18v14H3z M9 5v14 M9 10h12',integrations:'M3 9h6v6H3z M15 3h6v6h-6z M15 15h6v6h-6z M9 12h3V6h3 M12 12v6h3',settings:'M3 6h18 M3 12h18 M3 18h18 M7 3v6 M16 9v6 M9 15v6'});document.querySelector('#nav').innerHTML=Object.entries(labels).map(([k,v])=>'<button class="sidebtn '+((page==='setup'?'agent':page)===k?'on':'')+'" onclick="go(\''+k+'\')">'+icon(k)+v+'</button>').join('')}
+const menuButton = document.querySelector('.mobile-menu');
+function setMenu(open) {
+  menuButton.setAttribute('aria-expanded', String(open));
+}
+menuButton.onclick = () => setMenu(menuButton.getAttribute('aria-expanded') !== 'true');
+function go(p) {
+  page = p;
+  setMenu(false);
+  render();
+  window.scrollTo(0, 0);
+}
+Object.assign(paths, {
+  channel: 'M20.5 11.7a8.5 8.5 0 0 1-12.6 7.5L3 20.5l1.3-4.7a8.5 8.5 0 1 1 16.2-4.1z M8 8c0 4 3.5 7 7 7l1-2-2-1-1 1a7 7 0 0 1-3-3l1-1-1-2z',
+  billing: 'M3 5h18v14H3z M3 10h18 M6 15h4',
+  panel: 'M3 5h18v14H3z M9 5v14 M9 10h12',
+  integrations: 'M3 9h6v6H3z M15 3h6v6h-6z M15 15h6v6h-6z M9 12h3V6h3 M12 12v6h3',
+  settings: 'M3 6h18 M3 12h18 M3 18h18 M7 3v6 M16 9v6 M9 15v6'
+});
+function nav() {
+  if (data.threads.some(thread => thread.trip)) labels.quotes = 'Cotações';
+  const current = page === 'setup' ? 'agent' : page;
+  document.querySelector('#nav').innerHTML = Object.entries(labels).map(([key, label]) => {
+    const indicator = key === 'channel' ? '<wa-session-indicator compact></wa-session-indicator>' : '';
+    return `<button type="button" class="sidebtn ${current === key ? 'on' : ''}" ${current === key ? 'aria-current="page"' : ''} onclick="go('${key}')">${icon(key)}<span>${label}</span>${indicator}</button>`;
+  }).join('');
+}
 function title(h,p){return '<h1>'+h+'</h1><p class="sub">'+p+'</p>'}
 function badge(s){return '<span class="tag '+(['wait','bot','',''][s])+'">'+states[s]+'</span>'}
 function contact(t){return '<button class="contact" onclick="openThread('+t.id+')"><span class="avatar a'+t.id%3+'">'+esc(t.name.split(' ').map(s=>s[0]).slice(0,2).join(''))+'</span><span class="info"><b>'+esc(t.name)+'</b><small>'+esc(t.messages.at(-1)[1])+'</small></span>'+badge(t.status)+'</button>'}
@@ -141,11 +165,11 @@ function replySetup(){
  try{const res=await fetch('/api/whatsapp?operation=reply',{method:'POST',headers:{'Content-Type':'application/json','X-Atenda-Panel':'1'},body:JSON.stringify({action,keyword,response})});const d=await res.json();if(!res.ok)throw Error(d.error||'Falha no gateway.');if(action==='read')f.elements.response.value=d.response;out.textContent=d.enabled?'Resposta ativa no gateway.':'Nenhuma resposta ativa para essa palavra.'}catch(err){out.textContent=err.message}finally{for(const b of f.querySelectorAll('button'))b.disabled=false}}
 }
 function channel(){
- return title('WhatsApp','Vincule o número da empresa à sessão WA-AKG.')+
-   '<section class="card stack pane"><h2>Conexão do número</h2><atenda-whatsapp account></atenda-whatsapp></section>';
+ return title('WhatsApp','Acompanhe a conexão do número usado nos atendimentos.')+
+   '<section class="card stack pane"><h2>Conexão do número</h2><wa-session-indicator></wa-session-indicator></section>';
 }
 document.addEventListener('atenda-reply-setup',replySetup);
-function render(){document.querySelector(".bar strong").textContent=Empresa.company||data.workspace;document.querySelector(".bar .badge").textContent=Empresa.privatePage?(Empresa.logged?"Área privada":"Acesso por conta"):"Demonstração";nav();document.querySelector('#app').innerHTML=({home,chat:chats,agent:teamPage,billing:subscription,setup:agent,channel,quotes,settings:Empresa.settings,integrations:Empresa.integrations,panel:Empresa.panel})[page]();if(page==='chat'){document.querySelector('#search').value=search;list()}if(page==='setup')agentForm.onsubmit=e=>{e.preventDefault();const f=new FormData(e.target),name=f.get('name').trim(),greeting=f.get('greeting').trim();if(!name||!greeting){notice.textContent='Preencha os dois campos.';return}Object.assign(data,{name,greeting,enabled:f.has('enabled')});save();notice.textContent='Ajustes salvos.'}}
+function render(){document.querySelector(".bar strong").textContent=Empresa.company||data.workspace;document.querySelector(".bar .badge").textContent=Empresa.privatePage?(Empresa.logged?"Área privada":"Acesso por conta"):(["chat","channel"].includes(page)?"Atendimento":"Demonstração");nav();document.querySelector('#app').innerHTML=({home,chat:chats,agent:teamPage,billing:subscription,setup:agent,channel,quotes,settings:Empresa.settings,integrations:Empresa.integrations,panel:Empresa.panel})[page]();if(page==='chat'){document.querySelector('#search').value=search;list()}if(page==='setup')agentForm.onsubmit=e=>{e.preventDefault();const f=new FormData(e.target),name=f.get('name').trim(),greeting=f.get('greeting').trim();if(!name||!greeting){notice.textContent='Preencha os dois campos.';return}Object.assign(data,{name,greeting,enabled:f.has('enabled')});save();notice.textContent='Ajustes salvos.'}}
 function modal(title,html){dt.textContent=title;dc.innerHTML=html;if(!dialog.open)dialog.showModal();const b=dc.querySelector('.bubbles');if(b)b.scrollTop=b.scrollHeight}
 function bubbles(t){return '<div class="bubbles">'+t.messages.map(([out,msg])=>'<div class="bubble '+(out?'out':'')+'">'+esc(msg)+'</div>').join('')+'</div>'}
 function openThread(id){current=id;const t=data.threads.find(x=>x.id===id);modal(t.name,badge(t.status)+(t.agentName?' <span class="badge">'+esc(t.agentName)+'</span>':'')+(t.trip?'<button class="link" onclick="editQuote('+id+')">Ficha da viagem</button>':'')+bubbles(t)+(t.status===2?'<form class="compose" id="compose"><input name="text" maxlength="2000" required aria-label="Sua resposta" placeholder="Escreva uma resposta…"><button class="btn">Enviar</button></form><p style="margin-top:12px"><button class="link" onclick="statusTo(3)">Concluir atendimento</button></p>':'<button class="btn" onclick="statusTo(2)">'+(t.status===3?'Reabrir conversa':'Assumir atendimento')+'</button>'));const form=dc.querySelector('form');if(form)form.onsubmit=e=>{e.preventDefault();const v=form.elements.text.value.trim();if(v){t.messages.push([1,v]);save();render();openThread(id)}}}
@@ -158,7 +182,7 @@ render();Empresa.init();
 
 ;
 (()=>{
-const dock=document.querySelector('.dot-shell'), log=dock.querySelector('.dot-log'), chips=dock.querySelector('.dot-chips'), form=dock.querySelector('form'), input=form.querySelector('input'), toggle=dock.querySelector('.dot-toggle');
+const dock=document.querySelector('.dot-shell'), log=dock.querySelector('.dot-log'), chips=dock.querySelector('.dot-chips'), form=dock.querySelector('form'), input=form.querySelector('input'), toggle=document.querySelector('.dot-toggle');
 const shortcuts={settings:['Informações da empresa','Pagamentos'],panel:['Onde estão meus leads?','Ver documentos'],integrations:['Conectar API externa'],home:['Como está a fila?','Testar agente','Conectar WhatsApp'],chat:['Quem está esperando?','Resumo da fila'],agent:['Testar agente','Criar agente'],setup:['Configurar agente','Testar agente'],channel:['Como parear?','Resposta automática'],billing:['Qual a mensalidade?','Ver equipe'],quotes:['Ver cotações','Resumo da fila']};
 const fold=value=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 const currentPage=()=>page==='setup'?'Configurar agente':labels[page]||'Visão geral';
@@ -203,5 +227,5 @@ function route(q){
 function ask(message){const value=message.trim();if(!value)return;line(value,true);input.value='';previous=route(fold(value));const [text,action]=answer(previous);line(text,false,action)}
 form.onsubmit=e=>{e.preventDefault();ask(input.value)};
 toggle.onclick=()=>{const open=toggle.getAttribute('aria-expanded')!=='true';toggle.setAttribute('aria-expanded',String(open));document.getElementById('dot-body').hidden=!open;document.body.classList.toggle('dot-expanded',open);toggle.querySelector('.dot-sign').textContent=open?'−':'+'};
-document.body.classList.add('dot-expanded');line('Oi, eu sou o Dot. Quer saber quem está esperando ou testar um agente comigo?');suggest();
+line('Oi, eu sou o Dot. Quer saber quem está esperando ou testar um agente comigo?');suggest();
 })();
