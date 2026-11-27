@@ -1118,8 +1118,7 @@ body:has(#home:not([hidden])) .dock {
   line-height: 1.5;
 }
 .lead .shine,
-.actionLight,
-#openFirst {
+.actionLight {
   color: white;
   background: #3d2543;
   border-radius: 26px;
@@ -1390,11 +1389,10 @@ body:has(#home:not([hidden])) .dock {
     transform: translateY(34px);
   }
 }
-.theater[data-phase='2'] :is(.checkPhone, .connected),
-.theater[data-phase='3'] :is(.checkPhone, .connected) {
+.theater[data-phase='2'] :is(.checkPhone, .connected) {
   display: block;
 }
-.theater:is([data-phase='2'], [data-phase='3']) :is(.sampleQR, .scanBox) {
+.theater[data-phase='2'] :is(.sampleQR, .scanBox) {
   display: none;
 }
 .caption {
@@ -1410,10 +1408,45 @@ body:has(#home:not([hidden])) .dock {
 .caption strong {
   font-size: 19px;
 }
-.theater #openFirst {
-  background: #edd5ed;
-  color: #352037;
-  margin-top: 12px;
+.demoExchange {
+  display: none;
+  width: min(100%, 320px);
+  min-height: 190px;
+  margin: auto;
+  padding-block: 10px;
+  align-content: center;
+  gap: 8px;
+  text-align: left;
+}
+.theater:is([data-phase='3'], [data-phase='4']) .devices { display: none; }
+.theater:is([data-phase='3'], [data-phase='4']) .demoExchange { display: grid; }
+.activation .demoExchange p {
+  justify-self: start;
+  padding: 9px 14px;
+  margin: 0;
+  border-radius: 15px 15px 15px 3px;
+  background: #fff7fc;
+  color: #38233d;
+  font-size: 16px;
+}
+.demoExchange strong { display: block; font-size: 13px; }
+.activation .demoExchange .teamReply {
+  justify-self: end;
+  visibility: hidden;
+  background: #e8d3ef;
+  border-radius: 15px 15px 3px 15px;
+}
+.theater[data-phase='4'] .teamReply { visibility: visible; }
+@media (prefers-reduced-motion: no-preference) {
+  .demoExchange p:first-child,
+  .theater[data-phase='4'] .teamReply { animation: messageAppear .3s ease-out; }
+  @keyframes messageAppear {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+@media (max-width: 700px) {
+  .demoExchange { min-height: 175px; }
 }
 .landingFoot {
   padding-block: 22px;

@@ -614,47 +614,34 @@ for (const [x, y] of [
   ctx.fillStyle = '#36203c';
   ctx.fillRect(x + 8, y + 8, 12, 12);
 }
-const captions = [
-  'O código aparece na central.',
-  'O celular lê o QR Code.',
-  'Número conectado ao WhatsApp.',
-  'Dani enviou a primeira mensagem.',
+const activationSteps = [
+  { caption: 'O código aparece na central.', duration: 1100 },
+  { caption: 'O celular lê o QR Code.', duration: 1750 },
+  { caption: 'Número conectado ao WhatsApp.', duration: 1300 },
+  { caption: 'Dani enviou a primeira mensagem.', duration: 2100 },
+  { caption: 'A equipe respondeu pelo WhatsApp.' },
 ];
-let firstChat = null,
-  activationTimer;
+
 function showPhase(phase) {
+  const step = activationSteps[phase];
   el('theater').dataset.phase = phase;
-  el('phaseText').textContent = captions[phase];
-  if (phase < 3) {
-    activationTimer = setTimeout(
-      () => showPhase(phase + 1),
-      phase === 1 ? 1750 : 1100,
-    );
+  el('phaseText').textContent = step.caption;
+  if (step.duration) {
+    setTimeout(() => showPhase(phase + 1), step.duration);
     return;
   }
-  if (firstChat === null) {
-    firstChat = contacts.length;
-    contacts.push({
-      name: 'Dani',
-      initial: 'D',
-      message: 'Oi! Posso tirar uma dúvida?',
-      wait: 0,
-      suggestion: 'Oi, Dani! Pode mandar sua pergunta.',
-      draft: '',
-      replies: [],
-      suggested: false,
-    });
-    paint();
-  }
-  el('openFirst').hidden = false;
   el('playQR').disabled = false;
   el('playQR').textContent = 'Ver de novo ↻';
 }
+
 el('playQR').onclick = () => {
-  clearTimeout(activationTimer);
-  el('openFirst').hidden = true;
   el('playQR').disabled = true;
   el('playQR').textContent = 'Demonstração em andamento';
+  if (matchMedia('(max-width: 700px)').matches) {
+    el('theater').scrollIntoView({
+      block: 'nearest',
+      behavior: motionPref.matches ? 'instant' : 'smooth',
+    });
+  }
   showPhase(0);
 };
-el('openFirst').onclick = () => goDesk(firstChat, true);
