@@ -26,6 +26,7 @@ http.createServer(async(req,res)=>{
  try{
  const pages=new Map([['/','index.html'],['/index.html','index.html'],['/portal','portal.html'],['/portal/','portal.html'],['/portal.html','portal.html'],['/login','acesso.html'],['/cadastro','acesso.html'],['/conta.js','conta.js'],['/central.js','central.js'],['/portal-acesso.js','portal-acesso.js'],['/empresa.js','empresa.js'],['/empresa.css','empresa.css'],['/dot.png','dot.png'],['/dot-motion.js','dot-motion.js']]);
  pages.set('/favicon.ico','favicon.ico');
+ pages.set('/dot-favicon-32.png','dot-favicon-32.png');
  pages.set('/whatsapp','whatsapp.html');
  for(const [route,file] of [['/admin','admin.html'],['/admin/','admin.html'],['/admin.html','admin.html'],['/admin.js','admin.js'],['/admin.css','admin.css']])pages.set(route,file);
  pages.set('/inbox.js','inbox.js');
