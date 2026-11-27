@@ -2,6 +2,7 @@
   "name": "atenda-portal",
   "private": true,
   "dependencies": {
+    "@supabase/supabase-js": "2.119.2",
     "@vercel/blob": "2.9.0",
     "ipaddr.js": "2.2.0"
   }

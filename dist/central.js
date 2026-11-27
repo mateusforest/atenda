@@ -109,7 +109,7 @@ function count(s){return data.threads.filter(t=>t.status===s).length}
 function inbox(s=-1){filter=s;search='';go('chat')}
 function home(){return title('Central de atendimento','Acompanhe as conversas e organize o trabalho da equipe.')+'<section class="hero"><h2>Sua equipe de agentes</h2><p>'+data.team.filter(a=>a.licensed&&!a.paused).length+' em teste · Atendimento, vendas e suporte.</p><button class="btn mint" onclick="go(\'agent\')">Adicionar agente</button></section><div class="metrics">'+[[0,'Aguardando equipe','clock'],[1,'Com o agente','agent'],[2,'Em atendimento','chat']].map(([s,n,i])=>'<button class="stat" onclick="inbox('+s+')">'+icon(i)+'<span>'+n+'</span><strong>'+String(count(s)).padStart(2,'0')+'</strong></button>').join('')+'</div><div class="grid"><section class="card"><div class="cardhead"><h2>Conversas recentes</h2><button class="link" onclick="inbox()">Ver todas</button></div>'+(data.threads.slice(0,4).map(contact).join('')||'<p class="muted">Teste um agente para criar a primeira conversa.</p>')+'</section><section class="card"><div class="cardhead"><h2>Atendimento inicial</h2>'+icon('agent')+'</div><p><b>'+esc(data.team[0].name)+'</b></p><p class="muted">Primeiro contato com o cliente</p><div class="listrow">Modo de teste<b>'+(data.team[0].paused?'Pausado':'Ativo')+'</b></div><div class="listrow">Canal<button class="link" onclick="go(&quot;channel&quot;)">Ver conexão</button></div><p style="margin-top:18px"><button class="btn light" onclick="go(\'agent\')">Gerenciar equipe</button></p></section></div>'}
 function list(){const q=search.toLocaleLowerCase('pt-BR');const rows=data.threads.filter(t=>(filter<0||t.status===filter)&&t.name.toLocaleLowerCase('pt-BR').includes(q));document.querySelector('#rows').innerHTML=rows.map(contact).join('')||'<p class="muted">Nenhuma conversa encontrada.</p>'}
-function chats(){return title('Conversas','Abra um atendimento para consultar o histórico ou responder.')+'<section class="card pane"><input aria-label="Buscar contato" placeholder="Buscar contato" id="search" oninput="search=this.value;list()"><div class="tabs">'+['Todas',...states].map((n,i)=>'<button class="'+(filter===i-1?'sel':'')+'" onclick="inbox('+(i-1)+')">'+n+'</button>').join('')+'</div><div id="rows"></div></section>'}
+function chats(){return title('Conversas','Abra um atendimento para consultar o histórico ou responder.')+'<section class="card stack pane"><whatsapp-inbox></whatsapp-inbox></section><section class="card pane"><h2>Conversas de teste</h2><input aria-label="Buscar contato" placeholder="Buscar contato" id="search" oninput="search=this.value;list()"><div class="tabs">'+['Todas',...states].map((n,i)=>'<button class="'+(filter===i-1?'sel':'')+'" onclick="inbox('+(i-1)+')">'+n+'</button>').join('')+'</div><div id="rows"></div></section>'}
 function agent(){return '<button class="link" onclick="go(&quot;agent&quot;)">Equipe de agentes</button>'+title('Configurar agente','Personalize e teste a primeira conversa com um viajante.')+'<form id="agentForm" class="card stack pane" style="max-width:720px"><label class="field">Nome do agente<input name="name" maxlength="64" required value="'+esc(data.name)+'"></label><label class="field">Mensagem de boas-vindas<textarea name="greeting" maxlength="500" required>'+esc(data.greeting)+'</textarea></label><label><input name="enabled" type="checkbox" style="width:auto" '+(data.enabled?'checked':'')+'> Ativar agente de teste</label><div><button class="btn">Salvar ajustes</button> <button type="button" class="btn light" onclick="startTest()">Testar conversa</button></div><span class="msg" id="notice" role="status"></span></form>'}
 
 const tripFields=['Destino','Datas','Origem','Passageiros','Orçamento'];
@@ -141,28 +141,10 @@ function replySetup(){
  try{const res=await fetch('/api/whatsapp?operation=reply',{method:'POST',headers:{'Content-Type':'application/json','X-Atenda-Panel':'1'},body:JSON.stringify({action,keyword,response})});const d=await res.json();if(!res.ok)throw Error(d.error||'Falha no gateway.');if(action==='read')f.elements.response.value=d.response;out.textContent=d.enabled?'Resposta ativa no gateway.':'Nenhuma resposta ativa para essa palavra.'}catch(err){out.textContent=err.message}finally{for(const b of f.querySelectorAll('button'))b.disabled=false}}
 }
 function channel(){
- setTimeout(()=>checkChannel(false),0);
- return title('WhatsApp','Vincule o número da empresa à sessão WA-AKG.')+'<section class="card stack pane"><h2>Conexão do número</h2><div id="waState" role="status">Consultando sessão…</div><div id="waActions"></div></section>';
+ return title('WhatsApp','Vincule o número da empresa à sessão WA-AKG.')+
+   '<section class="card stack pane"><h2>Conexão do número</h2><atenda-whatsapp account></atenda-whatsapp></section>';
 }
-let waSequence=0;
-async function checkChannel(create){
- const slot=document.querySelector('#waState'),actions=document.querySelector('#waActions');
- if(!slot||!actions)return;
- const seq=++waSequence;actions.replaceChildren();slot.textContent='Consultando sessão…';
- if(location.protocol==='file:'){slot.textContent='Abra a Atenda pelo servidor para vincular o número.';return}
- try{
- const r=await fetch('/api/whatsapp',{method:create?'POST':'GET',headers:{'X-Atenda-Panel':'1'},cache:'no-store',signal:AbortSignal.timeout(22000)});
- if(!(r.headers.get('content-type')||'').includes('application/json'))throw Error('O pareamento está disponível na versão com servidor.');
- const result=await r.json();if(result.setup){if(!slot.isConnected||seq!==waSequence)return;slot.textContent=result.error;actions.innerHTML='<a class="btn light" target="_blank" rel="noopener" href="https://vercel.com/mateus-maraschin-forests-projects/atenda/settings/environment-variables">Configurar instância WA-AKG</a> '+action('Verificar conexão','checkChannel(false)');return}if(!r.ok)throw Error(result.error||'Consulta indisponível.');
- if(!slot.isConnected||seq!==waSequence)return;
- const messages={missing:'A sessão ainda não foi criada.',connected:'WhatsApp conectado.',waiting:'Aguardando QR Code do gateway.',pairing:'No celular, abra Aparelhos conectados e escaneie o QR Code.'};
- slot.textContent=messages[result.state]||'Estado desconhecido.';
- if(result.state==='pairing'){const img=document.createElement('img');img.src=result.qr;img.alt='QR Code de pareamento';img.width=240;slot.append(document.createElement('br'),img)}
- if(['pairing','waiting'].includes(result.state))setTimeout(()=>{if(slot.isConnected&&seq===waSequence)checkChannel(false)},5000);
- if(result.state==='connected'){actions.innerHTML=action('Configurar resposta automática','replySetup()','');return}
- actions.innerHTML=result.state==='missing'?action('Gerar QR Code','checkChannel(true)',''):action('Atualizar','checkChannel(false)');
- }catch(e){if(slot.isConnected&&seq===waSequence){slot.textContent=e.message;actions.innerHTML=action('Tentar novamente','checkChannel(false)')}}
-}
+document.addEventListener('atenda-reply-setup',replySetup);
 function render(){document.querySelector(".bar strong").textContent=Empresa.company||data.workspace;document.querySelector(".bar .badge").textContent=Empresa.privatePage?(Empresa.logged?"Área privada":"Acesso por conta"):"Demonstração";nav();document.querySelector('#app').innerHTML=({home,chat:chats,agent:teamPage,billing:subscription,setup:agent,channel,quotes,settings:Empresa.settings,integrations:Empresa.integrations,panel:Empresa.panel})[page]();if(page==='chat'){document.querySelector('#search').value=search;list()}if(page==='setup')agentForm.onsubmit=e=>{e.preventDefault();const f=new FormData(e.target),name=f.get('name').trim(),greeting=f.get('greeting').trim();if(!name||!greeting){notice.textContent='Preencha os dois campos.';return}Object.assign(data,{name,greeting,enabled:f.has('enabled')});save();notice.textContent='Ajustes salvos.'}}
 function modal(title,html){dt.textContent=title;dc.innerHTML=html;if(!dialog.open)dialog.showModal();const b=dc.querySelector('.bubbles');if(b)b.scrollTop=b.scrollHeight}
 function bubbles(t){return '<div class="bubbles">'+t.messages.map(([out,msg])=>'<div class="bubble '+(out?'out':'')+'">'+esc(msg)+'</div>').join('')+'</div>'}
@@ -197,7 +179,7 @@ function answer(topic){const team=data.team, n=count(0), first=team.find(a=>a.li
  case 'new':return ['Escolha o tipo de agente e personalize o nome, o objetivo e a primeira mensagem.',['Escolher tipo de agente',chooseModel]];
  case 'team':return ['Sua equipe tem '+team.length+' agente(s), com '+team.filter(a=>a.licensed&&!a.paused).length+' ativo(s) em teste. Em Configurar, você pode ajustar as perguntas e o tom de voz.',['Gerenciar agentes',()=>go('agent')]];
  case 'auto':return ['Abra WhatsApp e confira a conexão. Com o número conectado, escolha Configurar resposta automática e defina a palavra que inicia a resposta.',['Consultar conexão',()=>go('channel')]];
- case 'wa':return ['Abra WhatsApp para consultar a sessão. Se o portal oferecer Gerar QR Code, clique e escaneie pelo menu Aparelhos conectados do telefone.',['Abrir WhatsApp',()=>go('channel')]];
+ case 'wa':return ['Abra WhatsApp para consultar a sessão. Clique em Conectar WhatsApp e escaneie pelo menu Aparelhos conectados do telefone.',['Abrir WhatsApp',()=>go('channel')]];
  case 'plan':return ['A mensalidade simulada desta equipe é '+money(monthly())+'. Em Assinatura você pode conferir a composição do plano.',['Ver assinatura',()=>go('billing')]];
  case 'quotes':return [data.threads.some(t=>t.trip)?'Há fichas de viagem no portal. Abra Cotações para consultar o pedido e atualizar a etapa.':'Ainda não há fichas de viagem neste painel. Elas aparecem quando o agente de viagens encaminha um pedido.',['Ver conversas',()=>inbox()]];
  default:return ['Você está em '+currentPage()+'. Posso consultar a fila, mostrar sua equipe, iniciar um teste ou orientar a conexão do WhatsApp.']
