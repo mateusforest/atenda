@@ -43,7 +43,7 @@ const Empresa = (() => {
   function recordList(){
     const s=section,q=searchText.trim().toLocaleLowerCase('pt-BR');
     const list=state.records.filter(r=>r.section===s&&[r.name,r.contact,r.email,r.status,r.notes,r.waSummary].join(' ').toLocaleLowerCase('pt-BR').includes(q));
-    return list.map(r=>'<button class="ws-row" data-wop="editRecord" data-wid="'+esc(r.id)+'"><span><b>'+esc(r.name)+'</b><small>'+esc([r.contact,r.date,r.section==='payments'?moneyBR(r.amount):r.file?.name].filter(Boolean).join(' · '))+'</small></span><span class="badge">'+esc(r.status||'Abrir')+'</span></button>').join('')||'<p class="muted">'+(q?'Nenhum resultado para esta busca.':'Nenhum registro nesta seção.')+'</p>';
+    return list.map(r=>'<button class="ws-row" data-wop="editRecord" data-wid="'+esc(r.id)+'"><span><b>'+esc(r.name)+'</b><small>'+esc([r.contact,r.date,r.status==='Com equipe'&&r.waNotice?(r.waNotice.reminder?'Lembrete de 24 horas':'Novo encaminhamento'):'',r.section==='payments'?moneyBR(r.amount):r.file?.name].filter(Boolean).join(' · '))+'</small></span><span class="badge">'+esc(r.status||'Abrir')+'</span></button>').join('')||'<p class="muted">'+(q?'Nenhum resultado para esta busca.':'Nenhum registro nesta seção.')+'</p>';
   }
   function paymentSummary(){const sums={Pendente:0,Pago:0};for(const r of state.records)if(r.section==='payments'&&Object.hasOwn(sums,r.status))sums[r.status]+=Number(r.amount)||0;return '<div class="ws-totals"><span>Pendente <b>'+esc(moneyBR(sums.Pendente))+'</b></span><span>Pago <b>'+esc(moneyBR(sums.Pago))+'</b></span></div>'}
   function panel(){const names=allSections();if(!names[section])section='leads';
@@ -57,6 +57,7 @@ const Empresa = (() => {
     if(s==='payments')fields+=fld('Valor (R$)','amount',r.amount,'number','required min="0" step=".01"');
     if(s==='documents')fields+=r.file?btn('Baixar '+r.file.name,'download',r.file.id):'<label class="field">Arquivo de até 2 MB<input type="file" name="attachment" required></label>';
     if(r.waSummary)fields+='<details open><summary>Solicitação pelo WhatsApp</summary><p style="white-space:pre-line">'+esc(r.waSummary)+'</p></details>';
+    if(r.waNotice?.jid)fields+='<a class="btn light" href="/portal#conversa='+encodeURIComponent(r.waNotice.jid)+'" target="_blank" rel="noopener">Abrir conversa no WhatsApp da Atenda</a>';
     fields+=fld('Observações','notes',r.notes,'area');
     modal((id?'Editar ':'Adicionar ')+(singular[s]||'registro'),'<form class="stack" id="ws-record">'+fields+(s==='leads'&&id?btn('Converter em cliente','convert',id):'')+submit('Salvar')+'</form>');
     const f=document.getElementById('ws-record');f.onsubmit=e=>{e.preventDefault();progress(f,async()=>{

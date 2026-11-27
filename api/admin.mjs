@@ -33,6 +33,14 @@ export default async function admin(req,res){
       if(!isWorker(req.headers.authorization,'atenda-crm-v1'))throw fault(401,'Acesso restrito.');
       await persistService(body.owner,body.event);return send(200,{saved:true});
     }
+    if(action==='handoff-mail'&&req.method==='POST'){
+      if(!isWorker(req.headers.authorization,'atenda-handoff-mail-v1'))throw fault(401,'Acesso restrito.');
+      const {mailConfigured}=await import('../lib/notification-email.mjs');
+      if(body.op==='status')return send(200,{configured:mailConfigured()&&!!process.env.WA_OWNER_EMAIL});
+      const {handoffEmail}=await import('../lib/handoff-email.mjs');
+      try{return send(200,await handoffEmail(body))}
+      catch(e){return send(e.status||503,{error:e.status?e.message:'Falha ao consultar o atendimento.',retryable:e.retryable===true||!e.status})}
+    }
     if(action==='auto-reply'&&req.method==='POST'){
       if(!isWorker(req.headers.authorization,'atenda-luna-autoreply-v1'))throw fault(401,'Acesso restrito.');
       return send(200,await lunaReply(body.profile,body.history,{key:await lunaKey()}));

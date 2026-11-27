@@ -1,0 +1,107 @@
+{
+  "id": "atendaTeamHandoffsV1",
+  "name": "Atenda · Encaminhamentos para a equipe",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "none"
+  },
+  "nodes": [
+    {
+      "id": "a",
+      "name": "A cada minuto",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "b",
+      "name": "Consultar encaminhamentos pendentes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "http://notices:8787/due",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 40000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "atendaTeamQueueAuth",
+          "name": "Atenda · Fila privada"
+        }
+      }
+    },
+    {
+      "id": "c",
+      "name": "Avisar a equipe",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=http://notices:8787/deliver/{{$json.id}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 40000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "atendaTeamQueueAuth",
+          "name": "Atenda · Fila privada"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "A cada minuto": {
+      "main": [
+        [
+          {
+            "node": "Consultar encaminhamentos pendentes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar encaminhamentos pendentes": {
+      "main": [
+        [
+          {
+            "node": "Avisar a equipe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

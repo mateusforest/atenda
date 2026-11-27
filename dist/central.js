@@ -346,7 +346,11 @@ const questions=['Quais são as datas previstas para a viagem?','De qual cidade 
 let trial,step,specialist;
 function startTest(id){specialist=catalog.find(a=>a.id===id);if(specialist&&!data.extras[id]?.active)return;if(!specialist&&!data.enabled){notice.textContent='Ative o agente e salve para testar.';return}trial={id:Math.max(...data.threads.map(t=>t.id))+1,name:'Viajante de teste',status:1,agentName:specialist?.name||data.name,messages:[[1,specialist?.welcome||data.greeting]]};step=0;testView()}
 function testView(){modal(trial.agentName,bubbles(trial)+'<form class="compose" id="testform"><input required maxlength="500" name="text" placeholder="Responda como viajante" aria-label="Resposta do viajante"><button class="btn">Enviar</button></form>');testform.onsubmit=e=>{e.preventDefault();const v=testform.elements.text.value.trim();if(!v)return;trial.messages.push([0,v]);const script=specialist?.questions||questions;if(step===script.length||/\b(humano|atendente|consultor)\b/i.test(v)){trial.messages.push([1,'Vou encaminhar seu atendimento para um consultor da agência.']);if(!specialist){trial.trip=trial.messages.filter(([out])=>!out).map(([,msg])=>msg);if(/\b(humano|atendente|consultor)\b/i.test(v))trial.trip.pop();trial.stage=0}trial.status=0;data.threads.unshift(trial);save();go('agent');openThread(trial.id);return}trial.messages.push([1,script[step++]]);testView()}}
-if(location.hash==='#assinatura')go('billing');else render();Empresa.init();
+const linkedChat=location.hash.match(/^#conversa=(\d{1,24})(?:%40|@)(lid|s\.whatsapp\.net)$/i);
+if(location.hash==='#assinatura')go('billing');else render();
+Empresa.init().then(()=>{
+  if(linkedChat && page==='home') openWhatsAppInbox('team',{jid:linkedChat[1]+'@'+linkedChat[2],name:linkedChat[1]});
+});
 
 ;
 (()=>{

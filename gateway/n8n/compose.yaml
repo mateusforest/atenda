@@ -1,0 +1,36 @@
+name: atenda-n8n
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.49.8@sha256:9a83f64039070a846723cdf7d95b85db9ad1e6fadb38cad1ca12eceb04e04f33
+    restart: unless-stopped
+    ports: ["127.0.0.1:5678:5678"]
+    environment:
+      TZ: America/Sao_Paulo
+      GENERIC_TIMEZONE: America/Sao_Paulo
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      EXECUTIONS_DATA_MAX_AGE: "168"
+    volumes:
+      - workflows:/home/node/.n8n
+      - ./workflow.json:/config/workflow.json:ro
+    depends_on: [notices]
+    networks: [queue, outbound]
+  notices:
+    image: ${ATENDA_WORKER_IMAGE:?}
+    restart: unless-stopped
+    user: "1000:1000"
+    entrypoint: ["node","/service/server.mjs"]
+    env_file: ./notices.env
+    volumes:
+      - ./server.mjs:/service/server.mjs:ro
+      - ./handoffs.mjs:/service/handoffs.mjs:ro
+      - ${ATENDA_STATE_SOURCE:?}:/source:ro
+      - ./state:/state
+    networks: [queue, outbound]
+volumes:
+  workflows:
+networks:
+  queue:
+    internal: true
+  outbound: {}

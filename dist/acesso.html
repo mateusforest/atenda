@@ -10,7 +10,7 @@
 (()=>{
   const signup=location.pathname.replace(/\/$/,'')==='/cadastro',form=document.getElementById('account'),pass=form.elements.password,confirm=form.elements.confirmation,notice=document.getElementById('notice'),send=document.getElementById('send');
   const next=new URLSearchParams(location.search).get('next');
-  const destination=next==='checkout'?'/checkout':next==='admin'?'/admin':location.hash==='#assinatura'?'/portal#assinatura':'/portal';
+  const destination=next==='checkout'?'/checkout':next==='admin'?'/admin':location.hash==='#assinatura'||/^#conversa=\d{1,24}(?:%40|@)(?:lid|s\.whatsapp\.net)$/i.test(location.hash)?'/portal'+location.hash:'/portal';
   if(signup){
     document.getElementById('support-contact').hidden=false;
     form.elements.consent.onchange=()=>{const on=form.elements.consent.checked;document.getElementById('phone-field').hidden=!on;form.elements.phone.disabled=!on;form.elements.phone.required=on};
