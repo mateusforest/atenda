@@ -6,13 +6,17 @@ class AtendaSubscription extends HTMLElement {
     this.className='card stack pane';
     this.innerHTML='<h2>Mensalidade da Atenda</h2><div class="stack" data-billing></div><output role="status">Consultando assinatura…</output>';
     this.content=this.querySelector('[data-billing]');this.output=this.querySelector('output');
+    this.guest=!AtendaAuth.session;
     this.run();
   }
   async run(payload){
     if(this.busy)return;this.busy=true;
     this.content.inert=true;
     try{
-      const res=await fetch('/api/billing',{method:payload?'POST':'GET',cache:'no-store',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await AtendaAuth.access()},body:payload?JSON.stringify(payload):undefined});
+      const headers={'Content-Type':'application/json'};
+      if(!this.guest)headers.Authorization='Bearer '+await AtendaAuth.access();
+      const res=await fetch(this.guest?'/api/billing?action=options':'/api/billing',{method:payload?'POST':'GET',cache:'no-store',headers,body:payload?JSON.stringify(payload):undefined});
+      if(!this.guest&&!payload&&res.status===401){AtendaAuth.clear();this.guest=true;this.busy=false;return await this.run()}
       const result=await res.json();
       if(!res.ok)throw Error(result.error||'Cobrança indisponível.');
       if(!this.isConnected)return;
@@ -55,21 +59,49 @@ class AtendaSubscription extends HTMLElement {
       }
     }
     add('p','Portal, um número de WhatsApp e um agente por '+billingMoney(basePrice)+'/mês. Cada agente adicional custa '+billingMoney(extraPrice)+'/mês.');
-    if(!config.pix&&!config.card){add('p','A contratação por Pix Automático e cartão aguarda habilitação.');return}
+
     const form=add('form','');form.className='stack';
-    form.innerHTML='<label class="field">Quantidade de agentes<input name="seats" type="number" min="1" max="100" step="1" value="1" required></label><label class="field">Forma de pagamento<select name="method"></select></label><div class="stack" data-payer><label class="field">Nome ou razão social<input name="payer" maxlength="100"></label><label class="field">CPF ou CNPJ<input name="document" inputmode="numeric" maxlength="18"></label></div><strong data-total></strong><p data-terms></p><label><input style="width:auto" type="checkbox" name="consent" required> Autorizo a mensalidade no valor e nas condições acima.</label><button class="btn">Continuar contratação</button>';
+    form.innerHTML=`
+      <label class="field">Quantidade de agentes<input name="seats" type="number" min="1" max="100" step="1" value="1" required></label>
+      <fieldset><legend>Forma de pagamento</legend>
+        <label class="method"><input type="radio" name="method" value="pix"><span>Pix Automático<small>Sicredi</small></span></label>
+        <label class="method"><input type="radio" name="method" value="card"><span>Cartão de crédito<small>PayZen</small></span></label>
+      </fieldset>
+      <div class="stack" data-payer><label class="field">Nome ou razão social<input name="payer" maxlength="100"></label><label class="field">CPF ou CNPJ<input name="document" inputmode="numeric" maxlength="18"></label></div>
+      <div class="total"><span>Total mensal</span><strong data-total></strong></div>
+      <p data-terms></p><label data-consent><input type="checkbox" name="consent" required> Autorizo a mensalidade nas condições acima.</label>
+      <button class="btn" type="submit">Continuar contratação</button>`;
     const f=form.elements;
-    if(config.pix)f.method.add(new Option('Pix Automático · Sicredi','pix'));
-    if(config.card)f.method.add(new Option('Cartão de crédito · PayZen','card'));
-    const update=()=>{
-      const pix=f.method.value==='pix',seats=f.seats.valueAsNumber;
-      form.querySelector('[data-payer]').hidden=!pix;
-      f.payer.required=pix;f.document.required=pix;f.consent.checked=false;
-      form.querySelector('[data-total]').textContent=Number.isInteger(seats)&&seats>=1&&seats<=100?billingMoney(basePrice+extraPrice*(seats-1))+' por mês':'';
-      form.querySelector('[data-terms]').textContent=pix?'Autorize no aplicativo do banco. O primeiro vencimento será em oito dias e as próximas cobranças serão mensais, até o cancelamento.':'A primeira cobrança ocorre ao autorizar o cartão na página segura da PayZen. As próximas são mensais, no mesmo dia ou no dia 28 para adesões após essa data, até o cancelamento.';
+    const payButton=form.querySelector('[type=submit]');
+    f.method.value=config.card&&!config.pix?'card':'pix';
+    for(const option of f.method){
+      if(!config[option.value])option.closest('label').querySelector('small').append(' · Aguardando habilitação');
+      option.onchange=update;
+    }
+    const guest=this.guest;
+    function update(){
+      const pix=f.method.value==='pix',seats=f.seats.valueAsNumber,available=config[f.method.value];
+      const collect=available&&!guest;
+      form.querySelector('[data-payer]').hidden=!(collect&&pix);
+      f.payer.disabled=f.document.disabled=!(collect&&pix);
+      f.payer.required=f.document.required=collect&&pix;
+      f.consent.disabled=!collect;f.consent.checked=false;
+      form.querySelector('[data-consent]').hidden=!collect;
+      const valid=Number.isInteger(seats)&&seats>=1&&seats<=100;
+      form.querySelector('[data-total]').textContent=valid?billingMoney(basePrice+extraPrice*(seats-1)):'—';
+      form.querySelector('[data-terms]').textContent=!available
+        ?(pix?'O Pix Automático':'O cartão de crédito')+' aguarda habilitação para contratar a mensalidade.'
+        :pix?'Autorize no aplicativo do banco. O primeiro vencimento será em oito dias e as próximas cobranças serão mensais, até o cancelamento.':'A primeira cobrança ocorre ao autorizar o cartão na página segura da PayZen. As próximas são mensais, no mesmo dia ou no dia 28 para adesões após essa data, até o cancelamento.';
+      payButton.disabled=!available||!valid;
+      payButton.textContent=!available?'Pagamento indisponível':guest?'Entrar para continuar':'Continuar contratação';
+    }
+    f.seats.oninput=update;update();
+    form.onsubmit=e=>{
+      e.preventDefault();
+      if(payButton.disabled)return;
+      if(guest){location.assign('/login?next=checkout');return}
+      this.run({op:'start',method:f.method.value,seats:f.seats.valueAsNumber,amount:basePrice+extraPrice*(f.seats.valueAsNumber-1),accepted:f.consent.checked,name:f.payer.value,document:f.document.value});
     };
-    f.seats.oninput=update;f.method.onchange=update;update();
-    form.onsubmit=e=>{e.preventDefault();this.run({op:'start',method:f.method.value,seats:f.seats.valueAsNumber,amount:basePrice+extraPrice*(f.seats.valueAsNumber-1),accepted:f.consent.checked,name:f.payer.value,document:f.document.value})};
   }
 }
 customElements.define('atenda-subscription',AtendaSubscription);

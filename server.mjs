@@ -30,6 +30,8 @@ http.createServer(async(req,res)=>{
  pages.set('/inbox.js','inbox.js');
  pages.set('/agent-rules.mjs','agent-rules.mjs');
  pages.set('/billing.js','billing.js');
+ pages.set('/checkout','checkout.html');
+ pages.set('/checkout.css','checkout.css');
  pages.set('/portal-ui.css','portal-ui.css');
  pages.set('/whatsapp-channel.js','whatsapp-channel.js');
  const localPortal=['/portal','/portal/','/portal.html'].includes(path) && !process.env.SUPABASE_URL;

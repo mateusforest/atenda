@@ -90,6 +90,7 @@ export default async function billing(req,res){
   const send=(code,body)=>{res.statusCode=code;res.end(JSON.stringify(body))};
   try{
     const cfg=billingConfig(),root='assinaturas/'+cfg.environment+'/',action=new URL(req.url,'https://atenda.local').searchParams.get('action');
+    if(action==='options'&&req.method==='GET')return send(200,{config:cfg,basePrice,extraPrice});
     if(action==='card-notification'){
       if(req.method!=='POST')throw problem(405,'Método inválido.');
       await notice(root,req);return send(200,{received:true});
