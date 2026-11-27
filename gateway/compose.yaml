@@ -1,0 +1,60 @@
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: wa_akg
+      MYSQL_USER: atenda
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?}
+    volumes:
+      - mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD","mysqladmin","ping","-h","127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 25
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:38741:3000"
+    environment:
+      DATABASE_URL: mysql://atenda:${MYSQL_PASSWORD:?}@db:3306/wa_akg
+      AUTH_SECRET: ${AUTH_SECRET:?}
+      NEXTAUTH_SECRET: ${AUTH_SECRET:?}
+      NEXTAUTH_URL: http://localhost:38741
+      BASE_URL: http://localhost:38741
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?}
+      BAILEYS_LOG_LEVEL: error
+    volumes:
+      - wa-data:/app/data
+      - uploads:/app/uploads
+  atendimento:
+    build:
+      context: ..
+      dockerfile: gateway/worker.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - gateway
+    environment:
+      WA_AKG_API_KEY: ${WA_AKG_API_KEY:-}
+      WA_AKG_SESSION: ${WA_AKG_SESSION:?}
+      WA_OWNER_EMAIL: ${WA_OWNER_EMAIL:?}
+      SUPABASE_URL: ${SUPABASE_URL:?}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:?}
+      WA_BRIDGE_SECRET: ${WA_BRIDGE_SECRET:?}
+    volumes:
+      - atendimento:/var/lib/atenda
+      - wa-data:/media/data:ro
+volumes:
+  mysql:
+  wa-data:
+  uploads:
+  atendimento:

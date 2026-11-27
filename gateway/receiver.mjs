@@ -5,8 +5,9 @@ import {voiceService} from './voice.mjs';
 import {agentEngine} from './agents.mjs';
 import {trialReply} from '../lib/agent-profile.mjs';
 import {openingForGreeting,requestsTeam} from '../dist/agent-rules.mjs';
+import {incomingTime} from './automatic.mjs';
 
-export function receiver({db,gateway,session,sessionId,ownerEmail,official,draft=agentEngine(),voice=voiceService(db,sessionId)}){
+export function receiver({db,gateway,session,sessionId,ownerEmail,official,automatic,draft=agentEngine(),voice=voiceService(db,sessionId)}){
   const photo=contactPhotos(gateway,session);
   db.exec(`pragma busy_timeout=3000;
   create table if not exists owner(session text primary key,user_id text not null);
@@ -29,6 +30,7 @@ export function receiver({db,gateway,session,sessionId,ownerEmail,official,draft
       return {state:row?.status==='CONNECTED'?'connected':'offline'};
     }
     verifyOwner(cmd.owner);
+    if(cmd.op==='automatic'&&automatic)return automatic.configure(cmd);
     if(cmd.op==='official'&&official)return official.command(cmd.action);
     if(cmd.op==='trial') {
       return trialReply(draft,cmd.profile,cmd.history);
@@ -65,11 +67,17 @@ export function receiver({db,gateway,session,sessionId,ownerEmail,official,draft
       if(suggesting&&(!latest||latest.fromMe||latest.keyId!==cmd.messageId))throw fault(409,'A conversa mudou. Confira a última mensagem.');
       let team=teamState(cmd.jid);
       if((cmd.op==='review'||suggesting)&&!team?.active){
+        const terms=(automatic?.activeProfile()||cmd.profile)?.handoff;
         for(let i=rows.length-1;i>=0;i--){
           const row=rows[i];
-          if(row.fromMe||row.keyId===team?.message)break;
-          const incoming=row.type==='AUDIO'?voice.state(cmd.jid,row).transcript:row.content;
-          if(!requestsTeam(incoming,cmd.profile?.handoff))continue;
+          if(row.fromMe||row.keyId===team?.message||cmd.autoSince&&incomingTime(row.timestamp)<cmd.autoSince)break;
+          const note=row.type==='AUDIO'?voice.state(cmd.jid,row):null;
+          if(cmd.autoSince&&note&&!note.transcript){
+            if(note.issue)throw fault(422,note.issue);
+            voice.start(cmd.jid,row);
+            throw fault(409,'Aguarde a transcrição antes da resposta automática.');
+          }
+          if(!requestsTeam(note?note.transcript:row.content,terms))continue;
           db.prepare('insert or replace into team_handoffs values(?,?,?,1)').run(sessionId,cmd.jid,row.keyId);
           team=teamState(cmd.jid);
           break;
@@ -101,6 +109,11 @@ export function receiver({db,gateway,session,sessionId,ownerEmail,official,draft
     const digest=createHash('sha256').update(JSON.stringify([session,cmd.owner.id,cmd.jid,cmd.text])).digest('hex');
     const history=await gateway('chat/'+session+'/'+contact);
     if(!history.length)throw fault(409,'A conversa ainda não possui mensagens.');
+    if(cmd.autoRevision){
+      const last=history.at(-1),mark=teamState(cmd.jid);
+      if(!automatic||automatic.status().revision!==cmd.autoRevision||last.fromMe||last.keyId!==cmd.expectedMessageId||mark?.active||mark?.message===last.keyId)
+        throw fault(409,'O atendimento mudou antes do envio automático.');
+    }
     const inserted=db.prepare('insert or ignore into sends(id,digest) values (?,?)').run(cmd.requestId,digest);
     if(!inserted.changes){
       const previous=db.prepare('select digest,key_id from sends where id=?').get(cmd.requestId);

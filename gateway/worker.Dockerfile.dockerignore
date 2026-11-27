@@ -1,0 +1,12 @@
+*
+!package.json
+!package-lock.json
+!gateway/
+gateway/*
+!gateway/*.mjs
+!lib/
+lib/*
+!lib/*.mjs
+!dist/
+dist/*
+!dist/agent-rules.mjs

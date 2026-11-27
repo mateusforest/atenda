@@ -3,6 +3,7 @@ import {userOf} from './billing.mjs';
 import {dashboard,jobs,acknowledge,registerAccount,phoneNumber} from '../lib/administration.mjs';
 import {isWorker} from '../lib/official-channel.mjs';
 import {saveLunaKey,lunaKey} from '../lib/luna-key.mjs';
+import {lunaReply} from '../lib/luna.mjs';
 
 async function signup(body){
   const email=typeof body.email==='string'?body.email.trim():'',password=body.password;
@@ -27,6 +28,19 @@ export default async function admin(req,res){
     const params=new URL(req.url,'https://atenda.local').searchParams,action=params.get('action')||'overview';
     const body=typeof req.body==='string'?JSON.parse(req.body):req.body||{};
     if(action==='signup'&&req.method==='POST')return send(200,await signup(body));
+    if(action==='auto-reply'&&req.method==='POST'){
+      if(!isWorker(req.headers.authorization,'atenda-luna-autoreply-v1'))throw fault(401,'Acesso restrito.');
+      return send(200,await lunaReply(body.profile,body.history,{key:await lunaKey()}));
+    }
+    if(action==='auto-voice'&&req.method==='POST'){
+      if(!isWorker(req.headers.authorization,'atenda-luna-autoreply-v1'))throw fault(401,'Acesso restrito.');
+      if(typeof body.audio!=='string'||!body.audio.length||body.audio.length>3800000)throw fault(413,'Tamanho do áudio inválido.');
+      const key=await lunaKey();if(!key)throw fault(503,'Configure a chave da OpenAI.');
+      const audio=new FormData();audio.set('model','gpt-transcribe');audio.set('file',new Blob([Buffer.from(body.audio,'base64')],{type:'audio/mpeg'}),'mensagem.mp3');
+      const r=await fetch('https://api.openai.com/v1/audio/transcriptions',{method:'POST',redirect:'error',signal:AbortSignal.timeout(75000),headers:{Authorization:'Bearer '+key},body:audio});
+      if(!r.ok)throw fault(502,'OpenAI respondeu HTTP '+r.status+' na transcrição.');
+      return send(200,{text:String((await r.json()).text||'').slice(0,12000)});
+    }
     if(action==='delivery'&&req.method==='POST'){
       if(!isWorker(req.headers.authorization))throw fault(401,'Acesso restrito.');
       if(body.op==='pull')return send(200,{jobs:await jobs()});

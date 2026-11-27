@@ -1,5 +1,6 @@
 import {DatabaseSync} from 'node:sqlite';
 import {receiver} from './receiver.mjs';
+import {automaticAgent} from './automatic.mjs';
 import {officialSupport} from './official-support.mjs';
 import {dirname,join} from 'node:path';
 import {mkdirSync} from 'node:fs';
@@ -9,7 +10,7 @@ const {WA_AKG_URL,WA_AKG_API_KEY,WA_AKG_SESSION,WA_OWNER_EMAIL,LOCALAPPDATA}=pro
 const stateDir=process.env.ATENDA_STATE_DIR||(LOCALAPPDATA&&join(LOCALAPPDATA,'Atenda','WhatsApp-1'));
 if(!WA_AKG_API_KEY||!WA_AKG_SESSION||!WA_OWNER_EMAIL||!stateDir)throw Error('Configuração do atendimento incompleta.');
 const origin=new URL(WA_AKG_URL);
-if(origin.origin!=='http://127.0.0.1:38741')throw Error('O atendimento requer o gateway local da Atenda.');
+if(!['http://127.0.0.1:38741','http://gateway:3000'].includes(origin.origin))throw Error('O atendimento requer a rede privada do gateway da Atenda.');
 const session=encodeURIComponent(WA_AKG_SESSION);
 const filename=join(stateDir,'atendimento.sqlite');
 mkdirSync(dirname(filename),{recursive:true});
@@ -24,7 +25,9 @@ async function gateway(path,body){
   return payload.data ?? payload;
 }
 const official=officialSupport({db,gateway,clientSession:WA_AKG_SESSION});
-const execute=receiver({db,gateway,session,sessionId:WA_AKG_SESSION,ownerEmail:WA_OWNER_EMAIL,official});
+const automatic=automaticAgent({db,gateway,sessionId:WA_AKG_SESSION,execute:cmd=>execute(cmd)});
+const execute=receiver({db,gateway,session,sessionId:WA_AKG_SESSION,ownerEmail:WA_OWNER_EMAIL,official,automatic});
+setInterval(()=>{void automatic.tick()},5000).unref();
 setInterval(()=>{void official.tick()},12000).unref();
 
 const bus=transport();

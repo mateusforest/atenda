@@ -37,7 +37,11 @@ export default async function inbox(req,res) {
       command={op,jid,owner,scope,page};
     } else if(req.method==='POST'){
       const body=typeof req.body==='string'?JSON.parse(req.body):req.body;
-      if(['review','release','suggest','trial','voice','audio'].includes(body?.op)){
+      if(body?.op==='automatic'){
+        if(!['status','enable','pause'].includes(body.mode)||JSON.stringify(body).length>25000)throw fault(400,'Configuração automática inválida.');
+        if(body.mode==='enable'&&!await lunaKey())throw fault(409,'Cadastre a chave do Luna na administração da Atenda.');
+        command={op:'automatic',owner,mode:body.mode,revision:body.revision,agent:body.agent,profile:body.profile};
+      }else if(['review','release','suggest','trial','voice','audio'].includes(body?.op)){
         if(body.op!=='trial'&&!privateJid.test(body.jid))throw fault(400,'Conversa inválida.');
         if(!['trial','review'].includes(body.op)&&(typeof body.messageId!=='string'||!body.messageId||body.messageId.length>200))throw fault(400,'Mensagem inválida.');
         if(JSON.stringify(body).length>40000)throw fault(413,'Contexto muito longo.');

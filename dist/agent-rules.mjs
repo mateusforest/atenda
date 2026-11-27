@@ -30,9 +30,14 @@ export function relevantFact(knowledge,message){
 }
 export function requestsTeam(text,terms){
   const words=' '+fold(text)+' ';
-  const triggers=['humano','humana','falar com uma pessoa','falar com a equipe','falar com um atendente','falar com uma atendente','quero um atendente','quero uma atendente','atendimento com uma pessoa',...String(terms||'').split(/[,;\n]/)];
-  if(words===' atendente ')return true;
-  return triggers.some(t=>{const phrase=fold(t);return phrase&&words.includes(' '+phrase+' ')});
+  if(String(terms||'').split(/[,;\n]/).some(t=>{const term=fold(t);return term&&words.includes(' '+term+' ')}))return true;
+  const person='(?:(?:um|uma|o|a|sua|seu) )?(?:atendente|humano|humana|pessoa|equipe|operador|operadora|representante|alguem|atendimento humano)';
+  const request=new RegExp('\\b(?:(?:falar|conversar|contato|atendimento) com |(?:chame|chama|chamar|quero|preciso de|solicito) |(?:passe|passa|passar|transfira|transfere|transferir|encaminhar|encaminhe)(?: me)? (?:para |pra |pro )?)'+person+'\\b');
+  return fold(text).split(/\b(?:mas|porem|agora sim)\b/).some(part=>{
+    const phrase=part.trim();
+    if(/\bnao (?:quero|preciso|desejo|me transfira|me encaminhe|chame)\b/.test(phrase))return false;
+    return /^(?:atendente|humano|humana|atendimento humano|suporte humano)(?: por favor)?$/.test(phrase)||request.test(phrase);
+  });
 }
 export function openingForGreeting(profile,history){
   if(history.some(m=>m.fromMe))return '';

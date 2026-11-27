@@ -20,6 +20,16 @@ O conector usa o Ollama em loopback, com o modelo local definido em `ATENDA_AGEN
 
 Para transcrição local, instale as dependências de `gateway/requirements-voz.txt` em um ambiente Python 3.12 em `%LOCALAPPDATA%\Atenda\voz-venv`. Em `atendimento.env`, defina `ATENDA_WHISPER_MODEL` com o caminho do modelo multilíngue local no formato faster-whisper. Ao abrir uma conversa cuja última mensagem é uma nota de voz recebida, o conector transcreve o áudio. Para as mensagens anteriores, use **Transcrever**. O áudio original pode ser ouvido em **Ouvir áudio**. O conector consulta o arquivo da sessão e da mensagem no Windows.
 
+## Atendimento automático com o portal fechado
+
+Em Administração → Luna na nuvem, o proprietário pode validar e salvar a chave do projeto OpenAI. A validação usa uma mensagem sintética. A chave fica cifrada em Blob privado e a API administrativa devolve somente o estado. Preserve o segredo do conector ao migrar a instalação.
+
+Em WhatsApp → Respostas automáticas com Luna, publique o agente responsável pelo número. O conector grava o perfil em seu volume persistente e atende as novas mensagens privadas a partir da ativação. Pedidos de atendimento humano e os termos do perfil passam a conversa à equipe. Em Conversas, “retome com o agente” libera as próximas mensagens. Um envio com confirmação incerta fica para conferência no histórico. A tela WhatsApp informa o host em uso e o último erro do ciclo.
+
+Para hospedar o número em uma VPS Linux com Docker Compose, use `gateway/compose.yaml`. O portal continua na Vercel. O banco, as credenciais de pareamento, as mídias e o estado do atendimento têm volumes próprios. Configure as variáveis do Compose em um arquivo privado fora do repositório. Para as senhas MySQL, use valores aleatórios em hexadecimal, adequados para a URL do banco. Em uma instalação nova, inicie primeiro `db gateway`; o painel do WA-AKG escuta apenas no loopback da VPS na porta 38741 e pode ser acessado por túnel SSH. Crie a sessão e a chave do WA-AKG, configure `WA_AKG_API_KEY` e inicie `atendimento`. O painel do portal e o conector usam o mesmo `WA_BRIDGE_SECRET`, projeto Supabase e conta proprietária. A imagem do conector inclui o conversor para transcrever notas de voz com a chave do portal.
+
+Para migrar uma sessão existente, faça backup do MySQL, de `data/auth`, das mídias e de `atendimento.sqlite`. Durante o corte, pare o supervisor do Windows e o gateway antes da cópia final consistente. Restaure esses dados na VPS com a mesma sessão, as mesmas credenciais e permissões de leitura e escrita para os serviços. Mantenha apenas um conector ativo por instalação. Confirme a conexão e teste uma conversa pelo número migrado antes de desativar definitivamente a instalação anterior.
+
 ## Assinaturas da Atenda
 
 O checkout em **Assinatura** usa Supabase Auth e Vercel Blob privado. O servidor calcula R$ 490 por mês, mais R$ 190 por agente adicional contratado. A escolha no simulador de equipe é independente da assinatura cobrada. Use as variáveis de `.env.example` apenas no servidor. O modo padrão é `sandbox`; produção exige `BILLING_ENV=production` e credenciais de produção. A conta PJ recebedora e os contratos do estabelecimento precisam estar habilitados.

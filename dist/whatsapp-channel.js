@@ -89,6 +89,43 @@ class AtendaWhatsApp extends HTMLElement {
 }
 customElements.define('atenda-whatsapp', AtendaWhatsApp);
 
+class AutomaticReplies extends HTMLElement {
+  async connectedCallback(){
+    this.innerHTML='<h2>Respostas automáticas com Luna</h2><p role="status">Consultando o agente do número…</p><label class="field">Agente do WhatsApp<select></select></label><div class="actions"><button class="btn" data-enable disabled>Ativar respostas automáticas</button><button class="btn light" data-pause hidden>Pausar respostas</button></div>';
+    const select=this.querySelector('select'),enable=this.querySelector('[data-enable]'),pause=this.querySelector('[data-pause]'),message=this.querySelector('p');
+    for(const a of data.team.filter(a=>a.licensed&&!a.paused))select.add(new Option(a.name,a.id));
+    const paint=result=>{
+      this.status=result;
+      if(Array.from(select.options).some(o=>o.value===result.agent))select.value=result.agent;
+      data.publishedAgent=result.agent;save();
+      enable.textContent=result.enabled?'Publicar configuração do agente':'Ativar respostas automáticas';
+      pause.hidden=!result.enabled;enable.disabled=!select.value;
+      message.textContent=(result.enabled?result.name+' responde às novas mensagens.':'O envio automático está pausado.')+' '+(result.host==='Windows'?'O número está conectado neste Windows e precisa dele ligado.':'O conector roda no servidor.')+(result.issue?' '+result.issue:'');
+    };
+    const change=async mode=>{
+      enable.disabled=pause.disabled=true;
+      try{
+        const member=findMember(select.value);
+        const result=await agentRequest('automatic',{mode,revision:this.status?.revision||'',...(mode==='enable'?{agent:member.id,profile:agentProfile(member)}:{})});
+        if(this.isConnected)paint(result);
+      }catch(e){message.textContent=e.message;if(this.status)enable.disabled=!select.value}
+      finally{pause.disabled=false}
+    };
+    enable.onclick=()=>change('enable');pause.onclick=()=>change('pause');
+    await change('status');
+  }
+}
+customElements.define('wa-automatic-replies',AutomaticReplies);
+
+async function syncPublishedAgent(agent){
+  if(data.publishedAgent!==agent.id)return;
+  const state=await agentRequest('automatic',{mode:'status'});
+  if(state.agent!==agent.id){data.publishedAgent=state.agent;save();return}
+  const enabled=agent.licensed&&!agent.paused;
+  const result=await agentRequest('automatic',{mode:enabled?'enable':'pause',revision:state.revision,agent:agent.id,profile:agentProfile(agent)});
+  data.publishedAgent=result.agent;save();
+}
+
 // A navegação e o cartão do canal compartilham a consulta autenticada.
 const accountChannel = (() => {
   const subscribers = new Set();

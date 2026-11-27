@@ -4,6 +4,7 @@ import {open,stat,readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {fault} from '../lib/wa-transport.mjs';
+import {workerToken} from '../lib/official-channel.mjs';
 
 const run=promisify(execFile);
 const script=fileURLToPath(new URL('./transcrever.py',import.meta.url));
@@ -58,6 +59,16 @@ export function voiceService(db, sessionId) {
             headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY},body:form});
           if(!res.ok)throw fault(502,'OpenAI respondeu HTTP '+res.status+' na transcrição.');
           text=(await res.json()).text;
+        }else if(process.env.ATENDA_CLOUD_VOICE==='1'){
+          const info=await run('ffprobe',['-v','error','-show_entries','format=duration','-of','csv=p=0',path],{timeout:15000});
+          const seconds=Number(info.stdout.trim());
+          if(!(seconds>0&&seconds<=900))throw fault(422,'O áudio deve ter até 15 minutos.');
+          const {stdout}=await run('ffmpeg',['-v','error','-nostdin','-i',path,'-t','900','-vn','-ar','16000','-ac','1','-b:a','24k','-f','mp3','pipe:1'],{encoding:'buffer',timeout:90000,maxBuffer:2800000});
+          const response=await fetch('https://atenda-amber.vercel.app/api/admin?action=auto-voice',{method:'POST',redirect:'error',signal:AbortSignal.timeout(85000),
+            headers:{Authorization:'Bearer '+workerToken('atenda-luna-autoreply-v1'),'Content-Type':'application/json'},body:JSON.stringify({audio:stdout.toString('base64')})});
+          const result=await response.json();
+          if(!response.ok)throw fault(response.status,result.error||'Transcrição indisponível.');
+          text=result.text;
         }else{
           if(!process.env.LOCALAPPDATA)throw fault(503,'Configure a transcrição no servidor.');
           const python=join(process.env.LOCALAPPDATA,'Atenda','voz-venv','Scripts','python.exe');

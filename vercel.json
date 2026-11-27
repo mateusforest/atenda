@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "functions": { "api/inbox.mjs": { "maxDuration": 90 }, "api/billing.mjs": { "maxDuration": 120 }, "api/billing-cron.mjs":{"maxDuration":120} },
+  "functions": { "api/admin.mjs":{"maxDuration":90}, "api/inbox.mjs": { "maxDuration": 90 }, "api/billing.mjs": { "maxDuration": 120 }, "api/billing-cron.mjs":{"maxDuration":120} },
   "crons": [{ "path": "/api/billing-cron", "schedule": "15 8 * * *" }],
   "outputDirectory": "dist",
   "rewrites": [
